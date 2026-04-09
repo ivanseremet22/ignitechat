@@ -1,5 +1,4 @@
-import React from "react";
-import { AnimatePresence, motion, useMotionValue } from "framer-motion";
+import React, { memo, useMemo } from "react";
 import { CheckCheck, Flame, Heart, MessageCircle, Pause, Play, ThumbsUp } from "lucide-react";
 import type { Message, Reaction } from "../../chat-types";
 
@@ -32,7 +31,7 @@ function reactionEmoji(type: Reaction["type"]) {
   return "🔥";
 }
 
-export default function MessageBubble({
+function MessageBubble({
   message,
   previousMessage,
   nextMessage,
@@ -47,17 +46,28 @@ export default function MessageBubble({
   isTouch,
 }: MessageBubbleProps) {
   const mine = message.senderId === currentUserId;
-  const x = useMotionValue(0);
+
   const groupedWithPrev =
     !!previousMessage &&
     previousMessage.senderId === message.senderId &&
     sameDay(previousMessage.createdAt, message.createdAt);
+
   const groupedWithNext =
     !!nextMessage &&
     nextMessage.senderId === message.senderId &&
     sameDay(nextMessage.createdAt, message.createdAt);
+
   const isPlaying = playingVoiceId === message.id;
-  const wave = buildWave(Number(message.id.replace(/\D/g, "")) || 1);
+  const wave = useMemo(() => buildWave(Number(message.id.replace(/\D/g, "")) || 1), [message.id]);
+
+  const timeLabel = useMemo(
+    () =>
+      new Date(message.createdAt).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    [message.createdAt],
+  );
 
   const radiusClass = mine
     ? `${groupedWithPrev ? "rounded-tr-xl" : "rounded-tr-[22px]"} ${
@@ -79,33 +89,22 @@ export default function MessageBubble({
             : "Отправлено"
     : "";
 
+  const showActions = hoveredMsg === message.id;
+
   return (
     <div
-      className={`${mine ? "flex justify-end" : "flex justify-start"} ${
-        groupedWithPrev ? "mt-1" : "mt-4"
-      }`}
+      className={`${mine ? "flex justify-end" : "flex justify-start"} ${groupedWithPrev ? "mt-1" : "mt-4"}`}
       onMouseEnter={() => !isTouch && setHoveredMsg(message.id)}
       onMouseLeave={() => !isTouch && setHoveredMsg(null)}
-      onClick={() => isTouch && setHoveredMsg(hoveredMsg === message.id ? null : message.id)}
+      onClick={() => isTouch && setHoveredMsg(showActions ? null : message.id)}
     >
-      <motion.div
-        drag="x"
-        dragConstraints={{ left: 0, right: 92 }}
-        style={{ x }}
-        onDragEnd={() => {
-          if (x.get() > 72) onReply(message.id);
-          x.set(0);
-        }}
-        initial={{ opacity: 0, y: 12, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.24, ease: "easeOut" }}
-        className={`relative max-w-[min(96%,1120px)] px-4 py-3 md:max-w-[min(92%,1280px)] lg:max-w-[min(86%,1480px)] ${radiusClass} ${
+      <div
+        className={`message-bubble relative max-w-[min(98%,1120px)] px-3.5 py-3 md:max-w-[min(92%,1280px)] lg:max-w-[min(86%,1480px)] ${radiusClass} ${
           mine
-            ? "border border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,244,223,0.98),rgba(255,239,205,0.94))] text-slate-900 shadow-[0_8px_18px_rgba(245,158,11,0.08)]"
-            : "border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.94))] text-slate-800 shadow-[0_8px_18px_rgba(15,23,42,0.04)]"
+            ? "border border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,244,223,0.98),rgba(255,239,205,0.94))] text-slate-900 shadow-[0_4px_10px_rgba(245,158,11,0.04)]"
+            : "border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.94))] text-slate-800 shadow-[0_4px_10px_rgba(15,23,42,0.025)]"
         }`}
       >
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-10 rounded-t-[inherit] bg-gradient-to-b from-white/40 to-transparent" />
         {replyTarget && (
           <div
             className={
@@ -125,8 +124,8 @@ export default function MessageBubble({
         {message.voice ? (
           <div className="flex min-w-[200px] items-center gap-3 overflow-hidden">
             <button
-              onClick={(e) => {
-                e.stopPropagation();
+              onClick={(event) => {
+                event.stopPropagation();
                 onToggleVoicePlay(message.id);
               }}
               className={
@@ -137,36 +136,30 @@ export default function MessageBubble({
             >
               {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </button>
+
             <div className="flex flex-1 items-end gap-1">
               {wave.map((height, index) => (
-                <motion.div
+                <div
                   key={`${message.id}-bar-${index}`}
-                  animate={isPlaying ? { scaleY: [1, 1.4, 0.8, 1.2, 1] } : { scaleY: 1 }}
-                  transition={
-                    isPlaying
-                      ? { duration: 0.8, repeat: Infinity, delay: index * 0.03 }
-                      : { duration: 0.2 }
-                  }
-                  className={
-                    mine ? "w-1 rounded-full bg-amber-500/70" : "w-1 rounded-full bg-slate-400/70"
-                  }
-                  style={{ height, transformOrigin: "center" }}
+                  className={mine ? "voice-bar voice-bar-mine" : "voice-bar voice-bar-peer"}
+                  style={{
+                    height,
+                    animationDelay: `${index * 0.03}s`,
+                    animationPlayState: isPlaying ? "running" : "paused",
+                  }}
                 />
               ))}
             </div>
+
             <span className="text-xs">{message.voice}s</span>
           </div>
         ) : (
           <div className="text-[15px] leading-6">{message.text}</div>
         )}
 
-        <div
-          className={
-            "mt-1.5 flex justify-between gap-4 text-[11px] " + (mine ? "text-slate-500" : "text-slate-400")
-          }
-        >
+        <div className={"mt-1.5 flex justify-between gap-4 text-[11px] " + (mine ? "text-slate-500" : "text-slate-400")}>
           <div className="flex flex-wrap items-center gap-2">
-            <span>{new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+            <span>{timeLabel}</span>
             {mine && (
               <span className="inline-flex items-center gap-1">
                 {statusLabel}
@@ -191,45 +184,54 @@ export default function MessageBubble({
           )}
         </div>
 
-        <AnimatePresence>
-          {(hoveredMsg === message.id || isTouch) && (
-            <motion.div
-              initial={{ opacity: 0, y: 8, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 8, scale: 0.96 }}
-              className={
-                "absolute bottom-full mb-2 flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/95 p-1 shadow-[0_12px_30px_rgba(15,23,42,0.12)] " +
-                (mine ? "right-0" : "left-0")
-              }
+        {showActions && (
+          <div
+            className={
+              "absolute bottom-full mb-2 flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/95 p-1 shadow-[0_8px_18px_rgba(15,23,42,0.08)] " +
+              (mine ? "right-0" : "left-0")
+            }
+          >
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                onReply(message.id);
+              }}
+              className="rounded-full p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
             >
-              <button
-                onClick={() => onReply(message.id)}
-                className="rounded-full p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
-              >
-                <MessageCircle size={14} />
-              </button>
-              <button
-                onClick={() => onReaction(message.id, "like")}
-                className="rounded-full p-1.5 text-blue-500 transition hover:bg-blue-50 hover:text-blue-600"
-              >
-                <ThumbsUp size={14} />
-              </button>
-              <button
-                onClick={() => onReaction(message.id, "love")}
-                className="rounded-full p-1.5 text-pink-500 transition hover:bg-pink-50 hover:text-pink-600"
-              >
-                <Heart size={14} />
-              </button>
-              <button
-                onClick={() => onReaction(message.id, "fire")}
-                className="rounded-full p-1.5 text-orange-500 transition hover:bg-orange-100 hover:text-orange-600"
-              >
-                <Flame size={14} />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
+              <MessageCircle size={14} />
+            </button>
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                onReaction(message.id, "like");
+              }}
+              className="rounded-full p-1.5 text-blue-500 transition hover:bg-blue-50 hover:text-blue-600"
+            >
+              <ThumbsUp size={14} />
+            </button>
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                onReaction(message.id, "love");
+              }}
+              className="rounded-full p-1.5 text-pink-500 transition hover:bg-pink-50 hover:text-pink-600"
+            >
+              <Heart size={14} />
+            </button>
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                onReaction(message.id, "fire");
+              }}
+              className="rounded-full p-1.5 text-orange-500 transition hover:bg-orange-100 hover:text-orange-600"
+            >
+              <Flame size={14} />
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+
+export default memo(MessageBubble);

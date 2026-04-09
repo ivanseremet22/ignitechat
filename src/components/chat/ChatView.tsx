@@ -93,10 +93,15 @@ export default function ChatView({
   openPeerProfile,
   setMobileSidebarOpen,
 }: ChatViewProps) {
+  const messageById = React.useMemo(
+    () => new Map(activeMessages.map((message) => [message.id, message])),
+    [activeMessages],
+  );
+
   return (
     <>
       <header
-        className="relative z-10 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,249,240,0.84))] px-4 py-3 backdrop-blur-2xl md:px-5 lg:px-6"
+        className="chat-header-shell mobile-no-blur relative z-10 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,249,240,0.92))] px-3 py-3 md:px-5 lg:px-6"
         style={{ paddingTop: "max(1rem, env(safe-area-inset-top))" }}
       >
         <div className="flex items-center gap-3">
@@ -135,7 +140,7 @@ export default function ChatView({
             </div>
           </button>
 
-          <div className="ml-auto flex items-center gap-1.5">
+          <div className="ml-auto flex items-center gap-1 sm:gap-1.5">
             <Button
               variant="ghost"
               size="icon"
@@ -154,13 +159,13 @@ export default function ChatView({
                 <UserRound className="h-5 w-5" />
               )}
             </Button>
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" className="hidden sm:inline-flex">
               <Search className="h-5 w-5" />
             </Button>
             <Button variant="ghost" size="icon">
               <Phone className="h-5 w-5" />
             </Button>
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" className="hidden sm:inline-flex">
               <MoreVertical className="h-5 w-5" />
             </Button>
           </div>
@@ -173,7 +178,7 @@ export default function ChatView({
         </div>
       )}
 
-      <ScrollArea className="relative z-10 flex-1 px-3 py-3 md:px-5 lg:px-6">
+      <ScrollArea className="chat-scroll relative z-10 flex-1 px-2.5 py-3 md:px-5 lg:px-6">
         <div className="w-full space-y-1">
           {loadingMessages ? (
             <div className="flex justify-center py-10">
@@ -198,7 +203,7 @@ export default function ChatView({
                 <React.Fragment key={message.id}>
                   {showDayDivider && (
                     <div className="my-4 flex justify-center">
-                      <div className="rounded-full border border-slate-200/90 bg-white px-3 py-1 text-xs text-slate-500 backdrop-blur-xl shadow-[0_6px_18px_rgba(15,23,42,0.04)]">
+                      <div className="rounded-full border border-slate-200/90 bg-white px-3 py-1 text-xs text-slate-500 shadow-[0_4px_12px_rgba(15,23,42,0.03)]">
                         {formatDayLabel(message.createdAt)}
                       </div>
                     </div>
@@ -213,7 +218,7 @@ export default function ChatView({
                     setHoveredMsg={setHoveredMsg}
                     onReply={setReplyTo}
                     onReaction={addReaction}
-                    replyTarget={findMessageById(activeMessages, message.replyTo)}
+                    replyTarget={message.replyTo ? messageById.get(message.replyTo) ?? null : null}
                     onToggleVoicePlay={toggleVoicePlay}
                     playingVoiceId={playingVoiceId}
                     isTouch={isTouch}
@@ -227,11 +232,11 @@ export default function ChatView({
       </ScrollArea>
 
       <footer
-        className="relative z-10 bg-[linear-gradient(0deg,rgba(255,255,255,0.98),rgba(255,249,241,0.86)_58%,rgba(250,251,253,0.92))] px-3 py-4 backdrop-blur-2xl md:px-4 lg:px-6"
+        className="composer-shell mobile-no-blur relative z-10 bg-[linear-gradient(0deg,rgba(255,255,255,0.99),rgba(255,249,241,0.92)_58%,rgba(250,251,253,0.96))] px-2.5 py-3 md:px-4 lg:px-6"
         style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
       >
         {(replyPreview || pendingVoiceSeconds !== null) && (
-          <div className="mb-3 rounded-[26px] border border-slate-200/80 bg-white/90 px-4 py-3 shadow-[0_10px_26px_rgba(15,23,42,0.05)]">
+          <div className="mb-3 rounded-[26px] border border-slate-200/80 bg-white/90 px-4 py-3 mobile-lite-shadow shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
             {replyPreview && (
               <div className="flex items-start gap-3">
                 <div className="mt-1 h-10 w-1 rounded-full bg-gradient-to-b from-amber-400 to-orange-300" />
@@ -277,9 +282,9 @@ export default function ChatView({
         <motion.div
           animate={sendPulse ? { scale: [1, 1.01, 1] } : { scale: 1 }}
           transition={{ duration: 0.36, ease: "easeOut" }}
-          className="flex items-end gap-2 rounded-[30px] border border-white/70 bg-white/92 px-2 py-2 shadow-[0_18px_40px_rgba(15,23,42,0.06)]"
+          className="mobile-lite-shadow flex items-end gap-1.5 rounded-[28px] border border-white/80 bg-white/96 px-2 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.04)]"
         >
-          <Button variant="ghost" size="icon" className="h-12 w-12 rounded-full">
+          <Button variant="ghost" size="icon" className="hidden h-11 w-11 rounded-full sm:inline-flex">
             <Paperclip className="h-5 w-5" />
           </Button>
 
@@ -295,12 +300,12 @@ export default function ChatView({
               }}
               placeholder="Сообщение"
               rows={1}
-              className="max-h-40 min-h-[48px] resize-none rounded-[22px] border-transparent bg-transparent px-3 py-3 text-[15px] leading-6 shadow-none focus-visible:ring-0"
+              className="max-h-36 min-h-[44px] resize-none rounded-[20px] border-transparent bg-transparent px-2.5 py-2.5 text-[15px] leading-6 shadow-none focus-visible:ring-0"
             />
           </div>
 
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-12 w-12 rounded-full">
+            <Button variant="ghost" size="icon" className="hidden h-11 w-11 rounded-full sm:inline-flex">
               <Smile className="h-5 w-5" />
             </Button>
 
@@ -314,7 +319,7 @@ export default function ChatView({
                 <Button
                   onClick={() => void handleSend()}
                   disabled={sending}
-                  className="h-12 w-12 rounded-full bg-gradient-to-br from-amber-400 via-orange-300 to-amber-200 text-slate-900 shadow-[0_12px_30px_rgba(245,158,11,0.22)] transition hover:scale-105 disabled:opacity-60"
+                  className="h-11 w-11 rounded-full bg-gradient-to-br from-amber-400 via-orange-300 to-amber-200 text-slate-900 shadow-[0_10px_24px_rgba(245,158,11,0.18)] transition disabled:opacity-60"
                 >
                   <Send className="h-5 w-5" />
                 </Button>
@@ -327,10 +332,10 @@ export default function ChatView({
                 onTouchStart={startRecord}
                 onTouchEnd={stopRecord}
                 className={
-                  "h-12 w-12 rounded-full transition " +
+                  "h-11 w-11 rounded-full transition " +
                   (recording
-                    ? "bg-gradient-to-br from-red-500 to-orange-500 text-white shadow-[0_12px_30px_rgba(239,68,68,0.22)]"
-                    : "bg-gradient-to-br from-amber-400 via-orange-300 to-amber-200 text-slate-900 shadow-[0_12px_30px_rgba(245,158,11,0.22)]")
+                    ? "bg-gradient-to-br from-red-500 to-orange-500 text-white shadow-[0_10px_24px_rgba(239,68,68,0.18)]"
+                    : "bg-gradient-to-br from-amber-400 via-orange-300 to-amber-200 text-slate-900 shadow-[0_10px_24px_rgba(245,158,11,0.18)]")
                 }
               >
                 <Mic className="h-5 w-5" />

@@ -1018,7 +1018,7 @@ export default function App() {
   const showTyping = dataSource.provider === "mock" && activeChatId === "c0" && sending;
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
   }, [activeMessages.length, activeChatId, loadingMessages]);
 
   useEffect(() => {
@@ -1195,7 +1195,7 @@ export default function App() {
 
   if (authBooting) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[linear-gradient(180deg,#f8fafc_0%,#f6f1ea_100%)] text-slate-900">
+      <div className="flex min-h-[100svh] items-center justify-center bg-[linear-gradient(180deg,#f8fafc_0%,#f6f1ea_100%)] text-slate-900">
         <div className="rounded-3xl border border-slate-200/90 bg-white/95 px-6 py-4 text-sm text-slate-600 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
           Проверяем сессию IgniteChat...
         </div>
@@ -1209,7 +1209,7 @@ export default function App() {
 
   if (!currentUser || !activeChat) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[linear-gradient(180deg,#f8fafc_0%,#f6f1ea_100%)] text-slate-900">
+      <div className="flex min-h-[100svh] items-center justify-center bg-[linear-gradient(180deg,#f8fafc_0%,#f6f1ea_100%)] text-slate-900">
         <div className="rounded-3xl border border-slate-200/90 bg-white/95 px-6 py-4 text-sm text-slate-600 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
           Загрузка IgniteChat...
         </div>
@@ -1219,7 +1219,7 @@ export default function App() {
 
 
   return (
-    <div className="h-screen overflow-hidden bg-[#f6f8fb] text-slate-900">
+    <div className="app-shell bg-[#f6f8fb] text-slate-900">
 
       <div className="relative flex h-full">
         <AnimatePresence>
@@ -1228,7 +1228,7 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 z-30 bg-slate-900/20 backdrop-blur-sm md:hidden"
+              className="absolute inset-0 z-30 bg-slate-900/18 md:hidden"
               onClick={() => setMobileSidebarOpen(false)}
             />
           )}
@@ -1253,7 +1253,7 @@ export default function App() {
           qaScenarios={qaScenarios}
         />
 
-        <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,#fbfcfe_0%,#f8fafc_38%,#f6f8fb_100%)]">
+        <main className="chat-main-shell relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,#fbfcfe_0%,#f8fafc_38%,#f6f8fb_100%)]">
           <div className="pointer-events-none absolute inset-0 opacity-90">
             <div className="absolute -right-24 top-0 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(251,191,36,0.16),transparent_68%)]" />
             <div className="absolute left-10 top-24 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(59,130,246,0.08),transparent_70%)]" />

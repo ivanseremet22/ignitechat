@@ -61,14 +61,14 @@ export default function Sidebar({
     <motion.aside
       initial={false}
       animate={isDesktop || mobileSidebarOpen ? { x: 0 } : { x: -360 }}
-      transition={{ type: "spring", stiffness: 320, damping: 32 }}
-      className="absolute left-0 top-0 z-40 flex h-full w-[90vw] max-w-[352px] flex-col bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,250,252,0.96)_18%,rgba(244,247,251,0.98))] shadow-[12px_0_30px_rgba(15,23,42,0.08)] backdrop-blur-2xl md:static md:z-0 md:flex md:w-[336px] md:max-w-none md:translate-x-0 md:shadow-none xl:w-[344px]"
+      transition={isDesktop ? { duration: 0.16 } : { type: "tween", ease: "easeOut", duration: 0.18 }}
+      className="absolute left-0 top-0 z-40 flex h-full w-[84vw] max-w-[320px] flex-col bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.98)_18%,rgba(244,247,251,0.99))] shadow-[8px_0_22px_rgba(15,23,42,0.06)] md:static md:z-0 md:flex md:w-[320px] md:max-w-none md:translate-x-0 md:shadow-none xl:w-[336px]"
     >
       <div className="relative px-4 py-4">
         <div className="pointer-events-none absolute inset-x-3 top-2 h-28 rounded-[28px] bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.18),transparent_58%),radial-gradient(circle_at_top_right,rgba(249,115,22,0.10),transparent_46%)]" />
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 via-orange-400 to-yellow-300 text-slate-900 shadow-[0_16px_30px_rgba(245,158,11,0.18)]">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 via-orange-400 to-yellow-300 text-slate-900 shadow-[0_12px_24px_rgba(245,158,11,0.12)]">
               <Flame className="h-5 w-5" />
             </div>
             <div>
@@ -86,7 +86,7 @@ export default function Sidebar({
           </Button>
         </div>
 
-        <div className="mb-4 flex items-center gap-2 rounded-2xl border border-slate-200/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,250,240,0.84))] px-3 py-2 text-xs text-slate-600 shadow-[0_10px_20px_rgba(15,23,42,0.04)]">
+        <div className="mb-4 flex items-center gap-2 rounded-2xl border border-slate-200/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,250,240,0.84))] px-3 py-2 text-xs text-slate-600 mobile-lite-shadow shadow-[0_8px_16px_rgba(15,23,42,0.03)]">
           <Database className="h-4 w-4 text-orange-500" />
           <span>{provider === "supabase" ? "Supabase datasource" : "Mock datasource"}</span>
           <span className="ml-auto inline-flex items-center gap-1">
@@ -103,7 +103,7 @@ export default function Sidebar({
           <button
             type="button"
             onClick={onOpenMyProfile}
-            className="mb-4 flex w-full items-center gap-3 rounded-[24px] border border-slate-200/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,248,240,0.84))] px-3.5 py-3 text-left shadow-[0_14px_26px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:bg-white"
+            className="mb-4 flex w-full items-center gap-3 rounded-[24px] border border-slate-200/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,248,240,0.84))] px-3.5 py-3 text-left mobile-lite-shadow shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:bg-white"
           >
             <AppAvatar
               className="h-12 w-12 shrink-0"
