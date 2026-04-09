@@ -1,8 +1,13 @@
-
 import { createClient, type User } from "@supabase/supabase-js";
 import type { RegisterPayload } from "../AuthPage";
 
 export type AuthSubmitMode = "register" | "login";
+
+export type AuthSubmitResult = {
+  status: "authenticated" | "pending_verification";
+  profile: RegisterPayload;
+  message?: string;
+};
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? "";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
@@ -10,9 +15,8 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
 const AUTH_STORAGE_KEY = "ignite.auth";
 const PROFILE_STORAGE_KEY = "ignite.profile";
 
-export const authClient = SUPABASE_URL && SUPABASE_ANON_KEY
-  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-  : null;
+export const authClient =
+  SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 export const hasSupabaseAuth = Boolean(authClient);
 
@@ -135,10 +139,12 @@ export async function restoreAuthProfile(): Promise<{
   };
 }
 
-export async function syncProfileToSupabase(profile: RegisterPayload & {
-  statusText?: string;
-  avatarDataUrl?: string;
-}): Promise<void> {
+export async function syncProfileToSupabase(
+  profile: RegisterPayload & {
+    statusText?: string;
+    avatarDataUrl?: string;
+  },
+): Promise<void> {
   if (!authClient) return;
 
   const {
@@ -164,13 +170,17 @@ export async function syncProfileToSupabase(profile: RegisterPayload & {
 export async function submitAuth(
   payload: RegisterPayload,
   mode: AuthSubmitMode,
-): Promise<RegisterPayload> {
+): Promise<AuthSubmitResult> {
   const normalized = normalizeProfile(payload);
 
   if (!authClient) {
     writeStoredProfile(normalized);
     markStoredAuthenticated(true);
-    return normalized;
+
+    return {
+      status: "authenticated",
+      profile: normalized,
+    };
   }
 
   if (!normalized.email || !normalized.password) {
@@ -182,6 +192,7 @@ export async function submitAuth(
       email: normalized.email,
       password: normalized.password,
       options: {
+        emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/` : undefined,
         data: {
           name: normalized.name,
           username: normalized.username,
@@ -194,28 +205,29 @@ export async function submitAuth(
       throw new Error(signUpResult.error.message);
     }
 
-    const activeUser = signUpResult.data.user;
-    const activeSession = signUpResult.data.session;
-
-    if (!activeUser) {
+    if (!signUpResult.data.user) {
       throw new Error("Не удалось создать аккаунт.");
     }
 
-    if (!activeSession) {
-      const signInResult = await authClient.auth.signInWithPassword({
-        email: normalized.email,
-        password: normalized.password,
-      });
+    writeStoredProfile(normalized);
 
-      if (signInResult.error || !signInResult.data.user) {
-        throw new Error("Аккаунт создан. Подтверди email и затем войди в аккаунт.");
-      }
+    if (!signUpResult.data.session) {
+      markStoredAuthenticated(false);
+
+      return {
+        status: "pending_verification",
+        profile: normalized,
+        message: "Аккаунт создан. Подтверди email по письму, затем войди в аккаунт.",
+      };
     }
 
     await syncProfileToSupabase(normalized);
-    writeStoredProfile(normalized);
     markStoredAuthenticated(true);
-    return normalized;
+
+    return {
+      status: "authenticated",
+      profile: normalized,
+    };
   }
 
   const signInResult = await authClient.auth.signInWithPassword({
@@ -227,10 +239,40 @@ export async function submitAuth(
     throw new Error(signInResult.error?.message || "Не удалось войти в аккаунт.");
   }
 
-  const nextProfile = mergeUserWithStoredProfile(signInResult.data.user, readStoredProfile() ?? normalized);
+  const nextProfile = mergeUserWithStoredProfile(
+    signInResult.data.user,
+    readStoredProfile() ?? normalized,
+  );
+
   writeStoredProfile(nextProfile);
   markStoredAuthenticated(true);
-  return nextProfile;
+  await syncProfileToSupabase(nextProfile);
+
+  return {
+    status: "authenticated",
+    profile: nextProfile,
+  };
+}
+
+export async function resendSignupConfirmation(email: string): Promise<void> {
+  if (!authClient) return;
+
+  const normalizedEmail = email.trim();
+  if (!normalizedEmail) {
+    throw new Error("Укажи email для повторной отправки письма.");
+  }
+
+  const { error } = await authClient.auth.resend({
+    type: "signup",
+    email: normalizedEmail,
+    options: {
+      emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/` : undefined,
+    },
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
 export async function signOutApp(): Promise<void> {

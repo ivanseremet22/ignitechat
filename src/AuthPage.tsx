@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AtSign, Camera, Lock, Mail, Sparkles, User } from "lucide-react";
 
@@ -51,8 +51,18 @@ if (isDev) {
 
 export type AuthMode = "register" | "login";
 
+export type AuthNotice = {
+  type: "info" | "success" | "error";
+  title: string;
+  message: string;
+};
+
 type AuthPageProps = {
   onComplete: (payload: RegisterPayload, mode: AuthMode) => Promise<void> | void;
+  preferredMode?: AuthMode;
+  notice?: AuthNotice | null;
+  initialValues?: Partial<AuthFormState> | null;
+  onResendConfirmation?: (email: string) => Promise<void> | void;
 };
 
 const initialForm: AuthFormState = {
@@ -78,14 +88,38 @@ const floatingDots = [
   "right-[18%] bottom-[10%]",
 ] as const;
 
-export default function AuthPage({ onComplete }: AuthPageProps) {
-  const [mode, setMode] = useState<AuthMode>("register");
+export default function AuthPage({
+  onComplete,
+  preferredMode = "register",
+  notice = null,
+  initialValues = null,
+  onResendConfirmation,
+}: AuthPageProps) {
+  const [mode, setMode] = useState<AuthMode>(preferredMode);
   const [focusedField, setFocusedField] = useState<keyof AuthFormState | "">("");
   const [form, setForm] = useState<AuthFormState>(initialForm);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+  const [localNotice, setLocalNotice] = useState<AuthNotice | null>(notice);
 
   const initials = useMemo(() => getInitials(form.name), [form.name]);
+
+  useEffect(() => {
+    setMode(preferredMode);
+  }, [preferredMode]);
+
+  useEffect(() => {
+    if (!initialValues) return;
+    setForm((prev) => ({
+      ...prev,
+      ...initialValues,
+    }));
+  }, [initialValues]);
+
+  useEffect(() => {
+    setLocalNotice(notice);
+  }, [notice]);
 
   const handleChange = (
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -118,6 +152,27 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
       setSubmitError(error instanceof Error ? error.message : "Не удалось выполнить авторизацию.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleResend = async () => {
+    const email = form.email.trim();
+    if (!email || !onResendConfirmation) return;
+
+    setResending(true);
+    setSubmitError(null);
+
+    try {
+      await onResendConfirmation(email);
+      setLocalNotice({
+        type: "success",
+        title: "Письмо отправлено",
+        message: "Мы отправили новое письмо для подтверждения. Проверь почту и спам.",
+      });
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Не удалось отправить письмо повторно.");
+    } finally {
+      setResending(false);
     }
   };
 
@@ -198,6 +253,33 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
                 </motion.p>
               </AnimatePresence>
             </motion.div>
+
+            {localNotice && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`mb-5 rounded-2xl border px-4 py-3 text-sm ${
+                  localNotice.type === "success"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : localNotice.type === "error"
+                      ? "border-red-200 bg-red-50 text-red-700"
+                      : "border-blue-200 bg-blue-50 text-blue-700"
+                }`}
+              >
+                <div className="font-semibold">{localNotice.title}</div>
+                <div className="mt-1 leading-6">{localNotice.message}</div>
+                {localNotice.type !== "error" && onResendConfirmation && form.email.trim() && (
+                  <button
+                    type="button"
+                    onClick={handleResend}
+                    disabled={resending}
+                    className="mt-3 inline-flex rounded-xl bg-white/80 px-3 py-2 text-xs font-semibold text-slate-900 shadow-sm transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {resending ? "Отправляем..." : "Отправить письмо ещё раз"}
+                  </button>
+                )}
+              </motion.div>
+            )}
 
             <motion.form
               initial={{ opacity: 0, y: 16 }}
@@ -305,6 +387,12 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
                   />
                 </label>
               </div>
+
+              {submitError && (
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {submitError}
+                </div>
+              )}
 
               <div className="flex flex-col gap-3 pt-3 sm:flex-row sm:items-center">
                 <motion.button

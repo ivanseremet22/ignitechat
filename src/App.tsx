@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { motion, AnimatePresence, useMotionValue } from "framer-motion";
-import { Video } from "lucide-react";
-import AuthPage, { type RegisterPayload, type AuthMode, getInitials } from "./AuthPage";
+import { motion, AnimatePresence } from "framer-motion";
+import AuthPage, { type RegisterPayload, type AuthMode, type AuthNotice, getInitials } from "./AuthPage";
 import type { EditableAuthProfile, User, UserProfile, Reaction, MessageStatus, Message, Chat } from "./chat-types";
 import Sidebar from "./components/chat/Sidebar";
 import MyProfilePage from "./components/chat/MyProfilePage";
@@ -13,6 +12,7 @@ import {
   hasSupabaseAuth,
   readStoredAuthFlag,
   readStoredProfile,
+  resendSignupConfirmation,
   restoreAuthProfile,
   signOutApp,
   submitAuth,
@@ -745,6 +745,9 @@ export default function App() {
   const [authProfile, setAuthProfile] = useState<EditableAuthProfile | null>(() => readStoredProfile() as EditableAuthProfile | null);
   const [authBooting, setAuthBooting] = useState<boolean>(hasSupabaseAuth);
   const [authRefreshKey, setAuthRefreshKey] = useState(0);
+  const [authNotice, setAuthNotice] = useState<AuthNotice | null>(null);
+  const [authPreferredMode, setAuthPreferredMode] = useState<AuthMode>("register");
+  const [authInitialValues, setAuthInitialValues] = useState<Partial<RegisterPayload> | null>(null);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
@@ -830,6 +833,8 @@ export default function App() {
       setIsAuthenticated(isLoggedIn);
       if (!isLoggedIn) {
         setCurrentUser(null);
+      } else {
+        setAuthNotice(null);
       }
       setAuthRefreshKey((prev) => prev + 1);
     });
@@ -948,10 +953,17 @@ export default function App() {
 
   const activePeer = useMemo(() => {
     if (!activeChat) return null;
-    if (activeChatId === "c0") return users.find((user) => user.id === "u4") || null;
-    if (activeChatId === "c1") return users.find((user) => user.id === "u2") || null;
-    return users.find((user) => user.id === "u3") || null;
-  }, [activeChat, activeChatId, users]);
+
+    const titleMatch = users.find((user) => user.name === activeChat.title);
+    if (titleMatch) return titleMatch;
+
+    const otherParticipant = activeMessages.find((message) => message.senderId !== currentUser?.id)?.senderId;
+    if (otherParticipant) {
+      return users.find((user) => user.id === otherParticipant) || null;
+    }
+
+    return null;
+  }, [activeChat, activeMessages, currentUser?.id, users]);
 
   const replyPreview = useMemo(
     () => findMessageById(activeMessages, replyTo || undefined),
@@ -1129,6 +1141,9 @@ export default function App() {
     setAuthProfile(null);
     setCurrentUser(null);
     setIsAuthenticated(false);
+    setAuthPreferredMode("login");
+    setAuthInitialValues(null);
+    setAuthNotice(null);
     setAuthRefreshKey((prev) => prev + 1);
   }
 
@@ -1186,11 +1201,47 @@ export default function App() {
   }
 
   const handleAuthComplete = async (payload: RegisterPayload, mode: AuthMode) => {
-    const nextProfile = (await submitAuth(payload, mode)) as EditableAuthProfile;
+    const result = await submitAuth(payload, mode);
+
+    setAuthInitialValues({
+      email: result.profile.email,
+      password: result.profile.password,
+      name: result.profile.name,
+      username: result.profile.username,
+      bio: result.profile.bio,
+    });
+
+    if (result.status === "pending_verification") {
+      setAuthProfile(result.profile as EditableAuthProfile);
+      setIsAuthenticated(false);
+      setAuthBooting(false);
+      setAuthPreferredMode("login");
+      setAuthNotice({
+        type: "info",
+        title: "Подтверди email",
+        message: result.message || "Мы отправили письмо для подтверждения аккаунта. После подтверждения войди в аккаунт.",
+      });
+      return;
+    }
+
+    const nextProfile = result.profile as EditableAuthProfile;
+    setAuthNotice(null);
+    setAuthPreferredMode("login");
     setAuthProfile(nextProfile);
     setIsAuthenticated(true);
     setAuthBooting(false);
     setAuthRefreshKey((prev) => prev + 1);
+  };
+
+  const handleResendConfirmation = async (email: string) => {
+    await resendSignupConfirmation(email);
+    setAuthNotice({
+      type: "success",
+      title: "Письмо отправлено повторно",
+      message: "Проверь почту и папку Спам. После подтверждения просто войди в аккаунт.",
+    });
+    setAuthPreferredMode("login");
+    setAuthInitialValues((prev) => ({ ...prev, email }));
   };
 
   if (authBooting) {
@@ -1204,10 +1255,18 @@ export default function App() {
   }
 
   if (!isAuthenticated) {
-    return <AuthPage onComplete={handleAuthComplete} />;
+    return (
+      <AuthPage
+        onComplete={handleAuthComplete}
+        preferredMode={authPreferredMode}
+        notice={authNotice}
+        initialValues={authInitialValues}
+        onResendConfirmation={handleResendConfirmation}
+      />
+    );
   }
 
-  if (!currentUser || !activeChat) {
+  if (!currentUser) {
     return (
       <div className="flex min-h-[100svh] items-center justify-center bg-[linear-gradient(180deg,#f8fafc_0%,#f6f1ea_100%)] text-slate-900">
         <div className="rounded-3xl border border-slate-200/90 bg-white/95 px-6 py-4 text-sm text-slate-600 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
@@ -1294,7 +1353,7 @@ export default function App() {
               profileAvatarInputRef={profileAvatarInputRef}
               formatMessageMeta={formatMessageMeta}
             />
-          ) : (
+          ) : activeChat ? (
             <ChatView
               activeChat={activeChat}
               activeProfile={activeProfile}
@@ -1331,6 +1390,19 @@ export default function App() {
               openPeerProfile={openPeerProfile}
               setMobileSidebarOpen={setMobileSidebarOpen}
             />
+          ) : (
+            <div className="relative flex min-h-0 flex-1 items-center justify-center px-6 py-10">
+              <div className="w-full max-w-xl rounded-[32px] border border-slate-200/80 bg-white/90 p-8 text-center shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 text-2xl">
+                  💬
+                </div>
+                <h2 className="text-2xl font-semibold text-slate-900">Чатов пока нет</h2>
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  Регистрация уже работает. Аккаунт создан, профиль можно открыть слева сверху.
+                  Следующий шаг — подключить создание диалогов и список реальных собеседников.
+                </p>
+              </div>
+            </div>
           )}
         </main>
 
