@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { motion, AnimatePresence } from "framer-motion";
-import AuthPage, { type RegisterPayload, type AuthMode, type AuthNotice, getInitials } from "./AuthPage";
-import type { EditableAuthProfile, User, UserProfile, Reaction, MessageStatus, Message, Chat } from "./chat-types";
+import { AnimatePresence, motion } from "framer-motion";
+import { MessageSquarePlus, Search, Video } from "lucide-react";
+import AuthPage, { type AuthMode, type RegisterPayload, getInitials } from "./AuthPage";
+import type { Chat, EditableAuthProfile, Message, Reaction, UserProfile } from "./chat-types";
 import Sidebar from "./components/chat/Sidebar";
 import MyProfilePage from "./components/chat/MyProfilePage";
 import ChatView from "./components/chat/ChatView";
@@ -12,264 +12,28 @@ import {
   hasSupabaseAuth,
   readStoredAuthFlag,
   readStoredProfile,
-  resendSignupConfirmation,
   restoreAuthProfile,
   signOutApp,
   submitAuth,
   syncProfileToSupabase,
 } from "./lib/auth";
+import {
+  createOrGetDirectConversation,
+  fetchChats,
+  fetchCurrentProfile,
+  fetchMessages,
+  fetchUsers,
+  sendMessageToConversation,
+  subscribeToConversation,
+  toggleMessageReaction,
+} from "./lib/chat";
 
-
-type SendMessageInput = {
-  chatId: string;
-  senderId: string;
-  text: string;
-  replyTo?: string;
-  voice?: number;
-};
-
-type ToggleReactionInput = {
-  messageId: string;
-  userId: string;
-  type: Reaction["type"];
-};
-
-type ChatDataSource = {
-  provider: "mock" | "supabase";
-  isLive: boolean;
-  getCurrentUser: () => Promise<User>;
-  getUsers: () => Promise<User[]>;
-  getChats: () => Promise<Chat[]>;
-  getMessages: (chatId: string) => Promise<Message[]>;
-  sendMessage: (input: SendMessageInput) => Promise<Message>;
-  toggleReaction: (input: ToggleReactionInput) => Promise<Message[]>;
-  subscribeToMessages: (chatId: string, callback: (messages: Message[]) => void) => (() => void);
-};
-
-type SupabaseProfileRow = {
-  id: string;
-  name: string;
-  avatar: string | null;
-  online: boolean | null;
-  status: string | null;
-};
-
-type SupabaseChatRow = {
-  id: string;
-  title: string;
-  avatar: string | null;
-  preview: string | null;
-  pinned: boolean | null;
-  unread: number | null;
-  updated_at: string;
-};
-
-type SupabaseMessageRow = {
-  id: string;
-  chat_id: string;
-  sender_id: string;
-  text: string | null;
-  created_at: string;
-  reply_to: string | null;
-  voice_duration: number | null;
-  voice_url: string | null;
-  status: MessageStatus | null;
-  seen: boolean | null;
-};
-
-type SupabaseReactionRow = {
-  id: string;
-  message_id: string;
-  user_id: string;
-  type: Reaction["type"];
-};
-
-const nowIso = () => new Date().toISOString();
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? "";
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
-
-const seedUsers: UserProfile[] = [
-  {
-    id: "u1",
-    name: "You",
-    avatar: "YO",
-    online: true,
-    status: "в сети",
-    username: "you",
-    bio: "Собираю продуктовый чат и довожу UI до релиза.",
-    phone: "+7 999 000-00-01",
-    location: "Алматы",
-    joinedAt: "Jan 2024",
-    role: "Product builder",
-    accent: "from-amber-400 via-orange-300 to-yellow-200",
-    interests: ["UX", "Chat", "Launch"],
-  },
-  {
-    id: "u2",
-    name: "Mira",
-    avatar: "MI",
-    online: true,
-    status: "печатает…",
-    username: "mira.ui",
-    bio: "Frontend dev • Люблю чистый UI, быстрые сценарии и красивые мелочи ✨",
-    phone: "+7 999 000-00-02",
-    location: "Tbilisi",
-    joinedAt: "Feb 2024",
-    role: "UI designer",
-    accent: "from-fuchsia-300 via-orange-200 to-amber-100",
-    interests: ["Interface", "Motion", "Brand"],
-  },
-  {
-    id: "u3",
-    name: "Alex",
-    avatar: "AL",
-    online: false,
-    status: "был(а) 1 ч назад",
-    username: "alex.pm",
-    bio: "Product-minded. Люблю, когда чат ощущается как настоящий продукт.",
-    phone: "+7 999 000-00-03",
-    location: "Warsaw",
-    joinedAt: "Mar 2024",
-    role: "Product lead",
-    accent: "from-sky-200 via-cyan-100 to-white",
-    interests: ["Roadmap", "Metrics", "Growth"],
-  },
-  {
-    id: "u4",
-    name: "Ignite Bot",
-    avatar: "IB",
-    online: true,
-    status: "в сети",
-    username: "ignite.bot",
-    bio: "Тестовый собеседник для проверки UX, reply, voice и realtime сценариев.",
-    phone: "Service account",
-    location: "Cloud node",
-    joinedAt: "Jan 2024",
-    role: "Assistant",
-    accent: "from-orange-300 via-amber-200 to-yellow-100",
-    interests: ["Testing", "Flows", "Automation"],
-  },
-];
-
-const seedChats: Chat[] = [
-  {
-    id: "c0",
-    title: "Ignite Bot",
-    avatar: "IB",
-    preview: "Напиши что-нибудь, и бот ответит для проверки переписки",
-    pinned: true,
-    unread: 0,
-    updatedAt: nowIso(),
-  },
-  {
-    id: "c1",
-    title: "Mira",
-    avatar: "MI",
-    preview: "Теперь это реально выглядит как продукт 🔥",
-    pinned: true,
-    unread: 2,
-    updatedAt: nowIso(),
-  },
-  {
-    id: "c2",
-    title: "Alex",
-    avatar: "AL",
-    preview: "Нужен ещё более premium UI",
-    unread: 0,
-    updatedAt: nowIso(),
-  },
-];
-
-const seedMessages: Message[] = [
-  {
-    id: "b1",
-    chatId: "c0",
-    senderId: "u4",
-    text: "Привет. Я тестовый бот. Напиши любое сообщение — я отвечу, чтобы можно было проверить переписку.",
-    createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-    reactions: [],
-    status: "seen",
-  },
-  {
-    id: "b2",
-    chatId: "c0",
-    senderId: "u4",
-    text: "Я умею отвечать на обычные сообщения и на ответы. Это удобно для теста UI и UX чата.",
-    createdAt: new Date(Date.now() - 1000 * 60 * 29).toISOString(),
-    reactions: [],
-    status: "seen",
-  },
-  {
-    id: "1",
-    chatId: "c1",
-    senderId: "u2",
-    text: "Теперь это реально выглядит как продукт 🔥",
-    createdAt: new Date(Date.now() - 1000 * 60 * 25).toISOString(),
-    reactions: [{ type: "fire", userId: "u1" }],
-    status: "seen",
-  },
-  {
-    id: "2",
-    chatId: "c1",
-    senderId: "u2",
-    text: "Нужно сделать мобильную навигацию мягкой и удобной.",
-    createdAt: new Date(Date.now() - 1000 * 60 * 23).toISOString(),
-    reactions: [],
-    status: "seen",
-  },
-  {
-    id: "3",
-    chatId: "c1",
-    senderId: "u1",
-    text: "Сделаю slide-in список чатов, grouped bubbles и нормальные voice messages.",
-    createdAt: new Date(Date.now() - 1000 * 60 * 19).toISOString(),
-    reactions: [],
-    seen: true,
-    status: "seen",
-  },
-  {
-    id: "4",
-    chatId: "c1",
-    senderId: "u1",
-    voice: 9,
-    voiceUrl: null,
-    text: "",
-    createdAt: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
-    reactions: [],
-    seen: true,
-    status: "seen",
-  },
-  {
-    id: "5",
-    chatId: "c2",
-    senderId: "u3",
-    text: "Нужен ещё более premium UI.",
-    createdAt: new Date(Date.now() - 1000 * 60 * 10).toISOString(),
-    reactions: [],
-    status: "delivered",
-  },
-];
-
-const qaScenarios = [
-  "Supabase adapter подключается без переписывания UI",
-  "Фолбэк на mock datasource при пустом конфиге",
-  "Реакции с replace/toggle логикой",
-  "Статусы сообщения: sending/sent/seen/error",
-  "Realtime через subscribeToMessages",
-  "Автоответ бота живёт только в mock datasource",
-  "Отправка Enter",
-  "Запись и отправка голосового",
-  "Группировка сообщений без дублирования",
-  "Разделители дат между днями",
-];
-
-function formatTime(date: string) {
-  return new Date(date).toLocaleTimeString([], {
+function formatTime(value: string) {
+  return new Date(value).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
 }
-
 
 function formatMessageMeta(date: string) {
   const messageDate = new Date(date);
@@ -304,458 +68,21 @@ function findMessageById(messages: Message[], id?: string) {
   return messages.find((message) => message.id === id) || null;
 }
 
-function makeId(prefix = "msg") {
-  return typeof crypto !== "undefined" && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function sortMessages(messages: Message[]) {
-  return [...messages].sort(
-    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-  );
-}
-
-function toAvatarLabel(value: string | null | undefined, fallback: string) {
-  const text = value?.trim();
-  if (!text) return fallback.slice(0, 2).toUpperCase();
-  return text.slice(0, 2).toUpperCase();
-}
-
-function mapProfile(row: SupabaseProfileRow): User {
-  return {
-    id: row.id,
-    name: row.name,
-    avatar: toAvatarLabel(row.avatar, row.name),
-    online: row.online ?? false,
-    status: row.status ?? "в сети",
-  };
-}
-
-function getProfileByUserId(users: User[], userId: string): UserProfile {
-  const fallback = users.find((user) => user.id === userId) || users[0];
-  const extended = seedUsers.find((user) => user.id === userId);
-  if (extended) return extended;
-  return {
-    ...(fallback as User),
-    username: fallback?.name?.toLowerCase().replace(/\s+/g, ".") || "profile",
-    bio: "Профиль скоро появится.",
-    phone: "—",
-    location: "—",
-    joinedAt: "2024",
-    role: "Member",
-    accent: "from-slate-200 via-slate-100 to-white",
-    interests: ["Chat"],
-  };
-}
-
-function mapChat(row: SupabaseChatRow): Chat {
-  return {
-    id: row.id,
-    title: row.title,
-    avatar: toAvatarLabel(row.avatar, row.title),
-    preview: row.preview ?? "",
-    pinned: row.pinned ?? false,
-    unread: row.unread ?? 0,
-    updatedAt: row.updated_at,
-  };
-}
-
-function mapMessages(rows: SupabaseMessageRow[], reactions: SupabaseReactionRow[]): Message[] {
-  return sortMessages(
-    rows.map((row) => ({
-      id: row.id,
-      chatId: row.chat_id,
-      senderId: row.sender_id,
-      text: row.text ?? "",
-      createdAt: row.created_at,
-      replyTo: row.reply_to ?? undefined,
-      voice: row.voice_duration ?? undefined,
-      voiceUrl: row.voice_url,
-      status: row.status ?? "sent",
-      seen: row.seen ?? false,
-      reactions: reactions
-        .filter((reaction) => reaction.message_id === row.id)
-        .map((reaction) => ({ type: reaction.type, userId: reaction.user_id })),
-    })),
-  );
-}
-
-function createMockChatDataSource(): ChatDataSource {
-  let users = [...seedUsers];
-  let chats = [...seedChats];
-  let messages = [...seedMessages];
-  const listeners = new Set<(chatId: string, nextMessages: Message[]) => void>();
-
-  const emit = (chatId: string) => {
-    const payload = sortMessages(messages.filter((message) => message.chatId === chatId));
-    listeners.forEach((listener) => listener(chatId, payload));
-  };
-
-  const touchChat = (chatId: string, preview: string) => {
-    chats = chats.map((chat) =>
-      chat.id === chatId
-        ? {
-            ...chat,
-            preview,
-            updatedAt: nowIso(),
-          }
-        : chat,
-    );
-  };
-
-  return {
-    provider: "mock",
-    isLive: false,
-    async getCurrentUser() {
-      await new Promise((resolve) => window.setTimeout(resolve, 120));
-      return users[0];
-    },
-    async getUsers() {
-      await new Promise((resolve) => window.setTimeout(resolve, 120));
-      return [...users];
-    },
-    async getChats() {
-      await new Promise((resolve) => window.setTimeout(resolve, 150));
-      return [...chats].sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      );
-    },
-    async getMessages(chatId: string) {
-      await new Promise((resolve) => window.setTimeout(resolve, 180));
-      return sortMessages(messages.filter((message) => message.chatId === chatId));
-    },
-    async sendMessage(input: SendMessageInput) {
-      const createdAt = nowIso();
-      const optimistic: Message = {
-        id: makeId(),
-        chatId: input.chatId,
-        senderId: input.senderId,
-        text: input.text,
-        createdAt,
-        reactions: [],
-        replyTo: input.replyTo,
-        voice: input.voice,
-        voiceUrl: null,
-        status: "sent",
-        seen: true,
-      };
-
-      messages = [...messages, optimistic];
-      touchChat(
-        input.chatId,
-        input.voice ? `Голосовое · ${input.voice}s` : input.text || "Новое сообщение",
-      );
-      emit(input.chatId);
-
-      if (input.chatId === "c0") {
-        window.setTimeout(() => {
-          const botReply: Message = {
-            id: makeId("bot"),
-            chatId: "c0",
-            senderId: "u4",
-            text: input.voice
-              ? "Получил голосовое. Для теста интерфейса всё сработало корректно."
-              : input.replyTo
-                ? `Вижу твой ответ: «${input.text || "сообщение"}». Проверка цепочки reply работает.`
-                : `Бот получил: «${input.text || "сообщение"}». Можно продолжать тестировать переписку.`,
-            createdAt: nowIso(),
-            reactions: [],
-            replyTo: input.replyTo,
-            status: "seen",
-            seen: true,
-          };
-
-          messages = [...messages, botReply];
-          touchChat("c0", botReply.text);
-          emit("c0");
-        }, 900);
-      }
-
-      return optimistic;
-    },
-    async toggleReaction(input: ToggleReactionInput) {
-      messages = messages.map((message) => {
-        if (message.id !== input.messageId) return message;
-
-        const existing = message.reactions.find((reaction) => reaction.userId === input.userId);
-        if (!existing) {
-          return {
-            ...message,
-            reactions: [...message.reactions, { type: input.type, userId: input.userId }],
-          };
-        }
-
-        if (existing.type === input.type) {
-          return {
-            ...message,
-            reactions: message.reactions.filter((reaction) => reaction.userId !== input.userId),
-          };
-        }
-
-        return {
-          ...message,
-          reactions: message.reactions.map((reaction) =>
-            reaction.userId === input.userId ? { ...reaction, type: input.type } : reaction,
-          ),
-        };
-      });
-
-      const target = messages.find((message) => message.id === input.messageId);
-      if (target) emit(target.chatId);
-      return sortMessages(messages);
-    },
-    subscribeToMessages(chatId: string, callback: (messages: Message[]) => void) {
-      const listener = (emittedChatId: string, nextMessages: Message[]) => {
-        if (emittedChatId === chatId) callback(nextMessages);
-      };
-
-      listeners.add(listener);
-      callback(sortMessages(messages.filter((message) => message.chatId === chatId)));
-
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-  };
-}
-
-function createSupabaseChatDataSource(client: SupabaseClient): ChatDataSource {
-  const readMessages = async (chatId: string) => {
-    const [{ data: messageRows, error: messageError }, { data: reactionRows, error: reactionError }] =
-      await Promise.all([
-        client
-          .from("messages")
-          .select(
-            "id, chat_id, sender_id, text, created_at, reply_to, voice_duration, voice_url, status, seen",
-          )
-          .eq("chat_id", chatId)
-          .order("created_at", { ascending: true }),
-        client.from("message_reactions").select("id, message_id, user_id, type"),
-      ]);
-
-    if (messageError) throw messageError;
-    if (reactionError) throw reactionError;
-
-    return mapMessages(
-      (messageRows as SupabaseMessageRow[]) ?? [],
-      (reactionRows as SupabaseReactionRow[]) ?? [],
-    );
-  };
-
-  return {
-    provider: "supabase",
-    isLive: true,
-    async getCurrentUser() {
-      const {
-        data: { user },
-      } = await client.auth.getUser();
-
-      if (!user) {
-        return {
-          id: "guest-user",
-          name: "Guest",
-          avatar: "GU",
-          online: true,
-          status: "гость",
-        };
-      }
-
-      const { data, error } = await client
-        .from("profiles")
-        .select("id, name, avatar, online, status")
-        .eq("id", user.id)
-        .single();
-
-      if (error || !data) {
-        return {
-          id: user.id,
-          name: user.email?.split("@")[0] || "User",
-          avatar: "US",
-          online: true,
-          status: "в сети",
-        };
-      }
-
-      return mapProfile(data as SupabaseProfileRow);
-    },
-    async getUsers() {
-      const { data, error } = await client
-        .from("profiles")
-        .select("id, name, avatar, online, status")
-        .order("name", { ascending: true });
-
-      if (error) throw error;
-      return ((data as SupabaseProfileRow[]) ?? []).map(mapProfile);
-    },
-    async getChats() {
-      const { data, error } = await client
-        .from("chats")
-        .select("id, title, avatar, preview, pinned, unread, updated_at")
-        .order("updated_at", { ascending: false });
-
-      if (error) throw error;
-      return ((data as SupabaseChatRow[]) ?? []).map(mapChat);
-    },
-    async getMessages(chatId: string) {
-      return readMessages(chatId);
-    },
-    async sendMessage(input: SendMessageInput) {
-      const insertPayload = {
-        chat_id: input.chatId,
-        sender_id: input.senderId,
-        text: input.text || null,
-        reply_to: input.replyTo ?? null,
-        voice_duration: input.voice ?? null,
-        voice_url: null,
-        status: "sent" as MessageStatus,
-        seen: false,
-      };
-
-      const { data, error } = await client
-        .from("messages")
-        .insert(insertPayload)
-        .select(
-          "id, chat_id, sender_id, text, created_at, reply_to, voice_duration, voice_url, status, seen",
-        )
-        .single();
-
-      if (error) throw error;
-
-      await client
-        .from("chats")
-        .update({
-          preview: input.voice ? `Голосовое · ${input.voice}s` : input.text || "Новое сообщение",
-          updated_at: nowIso(),
-        })
-        .eq("id", input.chatId);
-
-      const row = data as SupabaseMessageRow;
-      return {
-        id: row.id,
-        chatId: row.chat_id,
-        senderId: row.sender_id,
-        text: row.text ?? "",
-        createdAt: row.created_at,
-        reactions: [],
-        replyTo: row.reply_to ?? undefined,
-        voice: row.voice_duration ?? undefined,
-        voiceUrl: row.voice_url,
-        status: row.status ?? "sent",
-        seen: row.seen ?? false,
-      };
-    },
-    async toggleReaction(input: ToggleReactionInput) {
-      const { data: existingRows, error: existingError } = await client
-        .from("message_reactions")
-        .select("id, message_id, user_id, type")
-        .eq("message_id", input.messageId)
-        .eq("user_id", input.userId)
-        .limit(1);
-
-      if (existingError) throw existingError;
-
-      const existing = (existingRows as SupabaseReactionRow[] | null)?.[0] ?? null;
-
-      if (!existing) {
-        const { error } = await client.from("message_reactions").insert({
-          message_id: input.messageId,
-          user_id: input.userId,
-          type: input.type,
-        });
-        if (error) throw error;
-      } else if (existing.type === input.type) {
-        const { error } = await client.from("message_reactions").delete().eq("id", existing.id);
-        if (error) throw error;
-      } else {
-        const { error } = await client
-          .from("message_reactions")
-          .update({ type: input.type })
-          .eq("id", existing.id);
-        if (error) throw error;
-      }
-
-      const { data: messageRows, error: messageError } = await client
-        .from("messages")
-        .select(
-          "id, chat_id, sender_id, text, created_at, reply_to, voice_duration, voice_url, status, seen",
-        )
-        .order("created_at", { ascending: true });
-      const { data: reactionRows, error: reactionError } = await client
-        .from("message_reactions")
-        .select("id, message_id, user_id, type");
-
-      if (messageError) throw messageError;
-      if (reactionError) throw reactionError;
-
-      return mapMessages(
-        (messageRows as SupabaseMessageRow[]) ?? [],
-        (reactionRows as SupabaseReactionRow[]) ?? [],
-      );
-    },
-    subscribeToMessages(chatId: string, callback: (messages: Message[]) => void) {
-      const channel = client
-        .channel(`messages:${chatId}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "messages",
-            filter: `chat_id=eq.${chatId}`,
-          },
-          async () => {
-            callback(await readMessages(chatId));
-          },
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "message_reactions",
-          },
-          async () => {
-            callback(await readMessages(chatId));
-          },
-        )
-        .subscribe();
-
-      readMessages(chatId).then(callback).catch(() => undefined);
-
-      return () => {
-        client.removeChannel(channel);
-      };
-    },
-  };
-}
-
-function createDataSource(): ChatDataSource {
-  if (SUPABASE_URL && SUPABASE_ANON_KEY) {
-    const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    return createSupabaseChatDataSource(client);
-  }
-  return createMockChatDataSource();
-}
-
-const dataSource = createDataSource();
-
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => readStoredAuthFlag());
-  const [authProfile, setAuthProfile] = useState<EditableAuthProfile | null>(() => readStoredProfile() as EditableAuthProfile | null);
+  const [authProfile, setAuthProfile] = useState<EditableAuthProfile | null>(
+    () => (readStoredProfile() as EditableAuthProfile | null),
+  );
   const [authBooting, setAuthBooting] = useState<boolean>(hasSupabaseAuth);
   const [authRefreshKey, setAuthRefreshKey] = useState(0);
-  const [authNotice, setAuthNotice] = useState<AuthNotice | null>(null);
-  const [authPreferredMode, setAuthPreferredMode] = useState<AuthMode>("register");
-  const [authInitialValues, setAuthInitialValues] = useState<Partial<RegisterPayload> | null>(null);
 
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [users, setUsers] = useState<User[]>([]);
+  const [currentProfile, setCurrentProfile] = useState<UserProfile | null>(null);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
-  const [activeChatId, setActiveChatId] = useState("c1");
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [sendPulse, setSendPulse] = useState(false);
   const [replyTo, setReplyTo] = useState<string | null>(null);
@@ -769,8 +96,9 @@ export default function App() {
   const [isTouch, setIsTouch] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [loadingChats, setLoadingChats] = useState(true);
-  const [loadingMessages, setLoadingMessages] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
+  const [creatingChat, setCreatingChat] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [myProfilePageOpen, setMyProfilePageOpen] = useState(false);
   const [editingMyProfile, setEditingMyProfile] = useState(false);
@@ -788,16 +116,6 @@ export default function App() {
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const profileAvatarInputRef = useRef<HTMLInputElement | null>(null);
-
-  const authInitials = authProfile ? getInitials(authProfile.name) : null;
-  const displayCurrentUser = currentUser
-    ? {
-        ...currentUser,
-        name: authProfile?.name || currentUser.name,
-        avatar: authInitials || currentUser.avatar,
-        status: currentUser.status,
-      }
-    : null;
 
   useEffect(() => {
     let active = true;
@@ -832,9 +150,11 @@ export default function App() {
       const isLoggedIn = Boolean(session?.user);
       setIsAuthenticated(isLoggedIn);
       if (!isLoggedIn) {
-        setCurrentUser(null);
-      } else {
-        setAuthNotice(null);
+        setCurrentProfile(null);
+        setUsers([]);
+        setChats([]);
+        setMessages([]);
+        setActiveChatId(null);
       }
       setAuthRefreshKey((prev) => prev + 1);
     });
@@ -872,77 +192,126 @@ export default function App() {
       return;
     }
 
-    let mounted = true;
-    setLoadingChats(true);
-    setError(null);
+    if (!authClient) {
+      setError("Supabase не настроен. Для реальных чатов нужен .env с ключами.");
+      setLoadingChats(false);
+      return;
+    }
 
-    Promise.all([dataSource.getCurrentUser(), dataSource.getUsers(), dataSource.getChats()])
-      .then(([nextUser, nextUsers, nextChats]) => {
+    const client = authClient;
+    let mounted = true;
+
+    async function loadBootData() {
+      setLoadingChats(true);
+      setError(null);
+
+      try {
+        const nextCurrentProfile = await fetchCurrentProfile(client);
+        const [nextUsers, nextChats] = await Promise.all([
+          fetchUsers(client, nextCurrentProfile.id),
+          fetchChats(client, nextCurrentProfile.id),
+        ]);
+
         if (!mounted) return;
-        setCurrentUser(nextUser);
+
+        setCurrentProfile(nextCurrentProfile);
         setUsers(nextUsers);
         setChats(nextChats);
-        if (!nextChats.find((chat) => chat.id === activeChatId) && nextChats[0]) {
-          setActiveChatId(nextChats[0].id);
-        }
-        setLoadingChats(false);
-      })
-      .catch((err: unknown) => {
+        setActiveChatId((prev) => {
+          if (prev && nextChats.some((chat) => chat.id === prev)) return prev;
+          return nextChats[0]?.id ?? null;
+        });
+      } catch (err: unknown) {
         if (!mounted) return;
         setError(err instanceof Error ? err.message : "Не удалось загрузить приложение.");
-        setLoadingChats(false);
-      });
+      } finally {
+        if (mounted) {
+          setLoadingChats(false);
+        }
+      }
+    }
+
+    void loadBootData();
 
     return () => {
       mounted = false;
     };
-  }, [activeChatId, authRefreshKey, isAuthenticated]);
+  }, [authRefreshKey, isAuthenticated]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !authClient || !activeChatId) {
+      setMessages([]);
       setLoadingMessages(false);
       return;
     }
 
+    const client = authClient;
     let active = true;
     setLoadingMessages(true);
     setError(null);
 
-    dataSource
-      .getMessages(activeChatId)
-      .then((nextMessages) => {
+    const loadConversation = async () => {
+      try {
+        const nextMessages = await fetchMessages(client, activeChatId);
         if (!active) return;
         setMessages(nextMessages);
-        setLoadingMessages(false);
-      })
-      .catch((err: unknown) => {
+      } catch (err: unknown) {
         if (!active) return;
         setError(err instanceof Error ? err.message : "Не удалось загрузить сообщения.");
-        setLoadingMessages(false);
-      });
+      } finally {
+        if (active) {
+          setLoadingMessages(false);
+        }
+      }
+    };
 
-    const unsubscribe = dataSource.subscribeToMessages(activeChatId, (nextMessages) => {
-      setMessages(nextMessages);
-      setLoadingMessages(false);
-      dataSource.getChats().then(setChats).catch(() => undefined);
+    void loadConversation();
+
+    const unsubscribe = subscribeToConversation(client, activeChatId, () => {
+      void loadConversation();
+      if (currentProfile) {
+        void fetchChats(client, currentProfile.id).then((nextChats) => {
+          setChats(nextChats);
+        });
+      }
     });
 
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [activeChatId, authRefreshKey, isAuthenticated]);
+  }, [activeChatId, authClient, currentProfile, isAuthenticated]);
 
   const filteredChats = useMemo(() => {
     const term = search.trim().toLowerCase();
+    if (!term) return chats;
     return chats.filter(
       (chat) =>
         chat.title.toLowerCase().includes(term) || chat.preview.toLowerCase().includes(term),
     );
   }, [search, chats]);
 
+  const searchResults = useMemo(() => {
+    const term = search.trim().replace(/^@/, "").toLowerCase();
+    if (!term || !currentProfile) return [];
+
+    const existingPeerIds = new Set(chats.map((chat) => chat.peerId).filter(Boolean));
+    return users
+      .filter((user) => {
+        const matches =
+          user.username.toLowerCase().includes(term) || user.name.toLowerCase().includes(term);
+        return matches && user.id !== currentProfile.id;
+      })
+      .sort((left, right) => left.username.localeCompare(right.username))
+      .slice(0, 8)
+      .map((user) => ({
+        ...user,
+        status: existingPeerIds.has(user.id) ? "Чат уже есть" : user.status,
+      }));
+  }, [chats, currentProfile, search, users]);
+
   const activeChat = useMemo(
-    () => chats.find((chat) => chat.id === activeChatId) || chats[0] || null,
+    () => chats.find((chat) => chat.id === activeChatId) || null,
     [activeChatId, chats],
   );
 
@@ -952,85 +321,75 @@ export default function App() {
   );
 
   const activePeer = useMemo(() => {
-    if (!activeChat) return null;
-
-    const titleMatch = users.find((user) => user.name === activeChat.title);
-    if (titleMatch) return titleMatch;
-
-    const otherParticipant = activeMessages.find((message) => message.senderId !== currentUser?.id)?.senderId;
-    if (otherParticipant) {
-      return users.find((user) => user.id === otherParticipant) || null;
-    }
-
-    return null;
-  }, [activeChat, activeMessages, currentUser?.id, users]);
+    if (!activeChat?.peerId) return null;
+    return users.find((user) => user.id === activeChat.peerId) || null;
+  }, [activeChat, users]);
 
   const replyPreview = useMemo(
     () => findMessageById(activeMessages, replyTo || undefined),
     [activeMessages, replyTo],
   );
-  const activeProfile = useMemo(
-    () => (activePeer ? getProfileByUserId(users, activePeer.id) : null),
-    [activePeer, users],
-  );
-  const myProfile = useMemo<UserProfile | null>(() => {
-    if (!displayCurrentUser) return null;
 
-    const seedSelf = seedUsers.find((user) => user.id === displayCurrentUser.id);
+  const myProfile = useMemo<UserProfile | null>(() => {
+    if (!currentProfile) return null;
 
     return {
-      id: displayCurrentUser.id,
-      name: authProfile?.name || displayCurrentUser.name,
-      avatar: authInitials || displayCurrentUser.avatar,
-      online: displayCurrentUser.online,
-      status: authProfile?.statusText || displayCurrentUser.status,
-      username:
-        authProfile?.username ||
-        seedSelf?.username ||
-        displayCurrentUser.name.toLowerCase().replace(/\s+/g, "."),
-      bio: authProfile?.bio || seedSelf?.bio || "Расскажите о себе.",
-      phone: authProfile?.phone || seedSelf?.phone || "—",
-      location: authProfile?.location || seedSelf?.location || "—",
-      joinedAt: seedSelf?.joinedAt || "2024",
-      role: seedSelf?.role || "Member",
-      accent: seedSelf?.accent || "from-amber-300 via-orange-200 to-yellow-100",
-      interests: seedSelf?.interests || ["Chat"],
-      avatarUrl: authProfile?.avatarDataUrl || seedSelf?.avatarUrl,
+      ...currentProfile,
+      name: authProfile?.name || currentProfile.name,
+      username: authProfile?.username || currentProfile.username,
+      bio: authProfile?.bio || currentProfile.bio,
+      phone: authProfile?.phone || (currentProfile.phone === "—" ? "" : currentProfile.phone),
+      location: authProfile?.location || (currentProfile.location === "—" ? "" : currentProfile.location),
+      status: authProfile?.statusText || currentProfile.status,
+      avatar: authProfile?.name ? getInitials(authProfile.name) : currentProfile.avatar,
+      avatarUrl: authProfile?.avatarDataUrl || currentProfile.avatarUrl,
     };
-  }, [authInitials, authProfile, displayCurrentUser]);
+  }, [authProfile, currentProfile]);
+
+  const activeProfile = useMemo(
+    () => activePeer,
+    [activePeer],
+  );
+
   useEffect(() => {
     if (!myProfile) return;
-    setMyProfileDraft((prev) => ({
+    setMyProfileDraft({
       name: myProfile.name,
       username: myProfile.username,
       bio: myProfile.bio,
-      email: authProfile?.email || prev.email || "",
-      password: authProfile?.password || prev.password || "",
+      email: authProfile?.email || "",
+      password: authProfile?.password || "",
       phone: myProfile.phone === "—" ? "" : myProfile.phone,
       location: myProfile.location === "—" ? "" : myProfile.location,
       statusText: myProfile.status || "",
       avatarDataUrl: authProfile?.avatarDataUrl || "",
-    }));
+    });
   }, [authProfile, myProfile]);
 
   const sharedMessages = useMemo(
     () =>
       activeProfile
         ? activeMessages.filter(
-            (message) => message.senderId === activeProfile.id || message.senderId === currentUser?.id,
+            (message) => message.senderId === activeProfile.id || message.senderId === currentProfile?.id,
           )
         : activeMessages,
-    [activeMessages, activeProfile, currentUser],
+    [activeMessages, activeProfile, currentProfile],
   );
+
   const panelProfile = profileView === "me" ? myProfile : activeProfile;
   const panelMessages = useMemo(
-    () => (profileView === "me" ? activeMessages.filter((message) => message.senderId === currentUser?.id) : sharedMessages),
-    [activeMessages, currentUser, profileView, sharedMessages],
+    () =>
+      profileView === "me"
+        ? activeMessages.filter((message) => message.senderId === currentProfile?.id)
+        : sharedMessages,
+    [activeMessages, currentProfile, profileView, sharedMessages],
   );
-  const showTyping = dataSource.provider === "mock" && activeChatId === "c0" && sending;
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    bottomRef.current?.scrollIntoView({
+      behavior: "auto",
+      block: "end",
+    });
   }, [activeMessages.length, activeChatId, loadingMessages]);
 
   useEffect(() => {
@@ -1041,9 +400,22 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [playingVoiceId, messages]);
 
-  async function handleSend() {
-    if (!currentUser || !activeChat) return;
+  async function refreshChats(keepChatId?: string | null) {
+    if (!authClient || !currentProfile) return;
+    const client = authClient;
+    const nextChats = await fetchChats(client, currentProfile.id);
+    setChats(nextChats);
+    setActiveChatId((prev) => {
+      const target = keepChatId ?? prev;
+      if (target && nextChats.some((chat) => chat.id === target)) return target;
+      return nextChats[0]?.id ?? null;
+    });
+  }
 
+  async function handleSend() {
+    if (!currentProfile || !activeChat || !authClient) return;
+
+    const client = authClient;
     const trimmed = draft.trim();
     const hasVoice = pendingVoiceSeconds !== null;
     if (!trimmed && !hasVoice) return;
@@ -1052,9 +424,9 @@ export default function App() {
     setError(null);
 
     try {
-      await dataSource.sendMessage({
-        chatId: activeChat.id,
-        senderId: currentUser.id,
+      await sendMessageToConversation(client, {
+        conversationId: activeChat.id,
+        senderId: currentProfile.id,
         text: trimmed,
         replyTo: replyTo || undefined,
         voice: hasVoice ? pendingVoiceSeconds || undefined : undefined,
@@ -1067,23 +439,53 @@ export default function App() {
       setRecordStart(null);
       setSendPulse(true);
       window.setTimeout(() => setSendPulse(false), 280);
+      await refreshChats(activeChat.id);
+      const nextMessages = await fetchMessages(client, activeChat.id);
+      setMessages(nextMessages);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Не удалось отправить сообщение.");
     } finally {
-      window.setTimeout(() => setSending(false), 350);
+      window.setTimeout(() => setSending(false), 220);
     }
   }
 
   async function addReaction(id: string, type: Reaction["type"]) {
-    if (!currentUser) return;
+    if (!currentProfile || !authClient) return;
+    const client = authClient;
     try {
-      await dataSource.toggleReaction({
+      await toggleMessageReaction(client, {
         messageId: id,
-        userId: currentUser.id,
+        userId: currentProfile.id,
         type,
       });
+      if (activeChatId) {
+        const nextMessages = await fetchMessages(client, activeChatId);
+        setMessages(nextMessages);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Не удалось поставить реакцию.");
+    }
+  }
+
+  async function startChatWithUser(userId: string) {
+    if (!authClient || !currentProfile) return;
+    const client = authClient;
+    setCreatingChat(userId);
+    setError(null);
+
+    try {
+      const chatId = await createOrGetDirectConversation(client, currentProfile.id, userId);
+      await refreshChats(chatId);
+      setActiveChatId(chatId);
+      setSearch("");
+      setReplyTo(null);
+      if (!isDesktop) {
+        setMobileSidebarOpen(false);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Не удалось создать чат.");
+    } finally {
+      setCreatingChat(null);
     }
   }
 
@@ -1139,15 +541,19 @@ export default function App() {
     setMyProfilePageOpen(false);
     setProfileOpen(false);
     setAuthProfile(null);
-    setCurrentUser(null);
+    setCurrentProfile(null);
+    setUsers([]);
+    setChats([]);
+    setMessages([]);
+    setActiveChatId(null);
     setIsAuthenticated(false);
-    setAuthPreferredMode("login");
-    setAuthInitialValues(null);
-    setAuthNotice(null);
     setAuthRefreshKey((prev) => prev + 1);
   }
 
-  function updateMyProfileDraft<K extends keyof EditableAuthProfile>(key: K, value: EditableAuthProfile[K]) {
+  function updateMyProfileDraft<K extends keyof EditableAuthProfile>(
+    key: K,
+    value: EditableAuthProfile[K],
+  ) {
     setMyProfileDraft((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -1173,7 +579,7 @@ export default function App() {
   }
 
   async function saveMyProfile() {
-    const normalizedName = myProfileDraft.name.trim() || currentUser?.name || "User";
+    const normalizedName = myProfileDraft.name.trim() || currentProfile?.name || "User";
     const normalizedUsername =
       myProfileDraft.username.trim().replace(/^@+/, "").replace(/\s+/g, "").toLowerCase() || "user";
 
@@ -1201,47 +607,11 @@ export default function App() {
   }
 
   const handleAuthComplete = async (payload: RegisterPayload, mode: AuthMode) => {
-    const result = await submitAuth(payload, mode);
-
-    setAuthInitialValues({
-      email: result.profile.email,
-      password: result.profile.password,
-      name: result.profile.name,
-      username: result.profile.username,
-      bio: result.profile.bio,
-    });
-
-    if (result.status === "pending_verification") {
-      setAuthProfile(result.profile as EditableAuthProfile);
-      setIsAuthenticated(false);
-      setAuthBooting(false);
-      setAuthPreferredMode("login");
-      setAuthNotice({
-        type: "info",
-        title: "Подтверди email",
-        message: result.message || "Мы отправили письмо для подтверждения аккаунта. После подтверждения войди в аккаунт.",
-      });
-      return;
-    }
-
-    const nextProfile = result.profile as EditableAuthProfile;
-    setAuthNotice(null);
-    setAuthPreferredMode("login");
+    const nextProfile = (await submitAuth(payload, mode)) as EditableAuthProfile;
     setAuthProfile(nextProfile);
     setIsAuthenticated(true);
     setAuthBooting(false);
     setAuthRefreshKey((prev) => prev + 1);
-  };
-
-  const handleResendConfirmation = async (email: string) => {
-    await resendSignupConfirmation(email);
-    setAuthNotice({
-      type: "success",
-      title: "Письмо отправлено повторно",
-      message: "Проверь почту и папку Спам. После подтверждения просто войди в аккаунт.",
-    });
-    setAuthPreferredMode("login");
-    setAuthInitialValues((prev) => ({ ...prev, email }));
   };
 
   if (authBooting) {
@@ -1255,31 +625,26 @@ export default function App() {
   }
 
   if (!isAuthenticated) {
-    return (
-      <AuthPage
-        onComplete={handleAuthComplete}
-        preferredMode={authPreferredMode}
-        notice={authNotice}
-        initialValues={authInitialValues}
-        onResendConfirmation={handleResendConfirmation}
-      />
-    );
+    return <AuthPage onComplete={handleAuthComplete} />;
   }
 
-  if (!currentUser) {
+  if (!currentProfile && !loadingChats) {
     return (
-      <div className="flex min-h-[100svh] items-center justify-center bg-[linear-gradient(180deg,#f8fafc_0%,#f6f1ea_100%)] text-slate-900">
-        <div className="rounded-3xl border border-slate-200/90 bg-white/95 px-6 py-4 text-sm text-slate-600 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
-          Загрузка IgniteChat...
+      <div className="flex min-h-[100svh] items-center justify-center bg-[linear-gradient(180deg,#f8fafc_0%,#f6f1ea_100%)] px-4 text-slate-900">
+        <div className="max-w-xl rounded-3xl border border-slate-200/90 bg-white/95 px-6 py-5 text-sm text-slate-600 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
+          <div className="mb-2 text-base font-semibold text-slate-900">Профиль ещё не готов</div>
+          <div>
+            Выполни SQL-скрипт для таблиц чата и profiles, затем перезайди в аккаунт.
+          </div>
         </div>
       </div>
     );
   }
 
+  const provider = authClient ? "supabase" : "mock";
 
   return (
     <div className="app-shell bg-[#f6f8fb] text-slate-900">
-
       <div className="relative flex h-full">
         <AnimatePresence>
           {mobileSidebarOpen && (
@@ -1293,23 +658,23 @@ export default function App() {
           )}
         </AnimatePresence>
 
-
-                <Sidebar
+        <Sidebar
           isDesktop={isDesktop}
           mobileSidebarOpen={mobileSidebarOpen}
           onCloseMobile={() => setMobileSidebarOpen(false)}
-          provider={dataSource.provider}
-          isLive={dataSource.isLive}
+          provider={provider}
+          isLive={Boolean(authClient)}
           myProfile={myProfile}
           onOpenMyProfile={openMyProfile}
           search={search}
           onSearchChange={setSearch}
           loadingChats={loadingChats}
           filteredChats={filteredChats}
+          searchResults={searchResults}
           activeChatId={activeChatId}
           onSelectChat={selectChat}
+          onStartChat={startChatWithUser}
           formatTime={formatTime}
-          qaScenarios={qaScenarios}
         />
 
         <main className="chat-main-shell relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,#fbfcfe_0%,#f8fafc_38%,#f6f8fb_100%)]">
@@ -1319,7 +684,7 @@ export default function App() {
           </div>
           <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-white/70 to-transparent" />
 
-                    {myProfilePageOpen && myProfile ? (
+          {myProfilePageOpen && myProfile ? (
             <MyProfilePage
               myProfile={myProfile}
               editingMyProfile={editingMyProfile}
@@ -1359,11 +724,11 @@ export default function App() {
               activeProfile={activeProfile}
               activePeer={activePeer}
               myProfile={myProfile}
-              showTyping={showTyping}
+              showTyping={false}
               error={error}
               loadingMessages={loadingMessages}
               activeMessages={activeMessages}
-              currentUserId={currentUser.id}
+              currentUserId={currentProfile?.id || ""}
               hoveredMsg={hoveredMsg}
               setHoveredMsg={setHoveredMsg}
               setReplyTo={setReplyTo}
@@ -1391,18 +756,40 @@ export default function App() {
               setMobileSidebarOpen={setMobileSidebarOpen}
             />
           ) : (
-            <div className="relative flex min-h-0 flex-1 items-center justify-center px-6 py-10">
-              <div className="w-full max-w-xl rounded-[32px] border border-slate-200/80 bg-white/90 p-8 text-center shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 text-2xl">
-                  💬
+            <section className="relative z-10 flex min-h-0 flex-1 items-center justify-center px-4 py-6 md:px-6">
+              <div className="w-full max-w-2xl rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-[0_24px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl md:p-8">
+                <div className="mx-auto flex max-w-xl flex-col items-center text-center">
+                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 via-orange-200 to-yellow-100 text-slate-900 shadow-[0_12px_30px_rgba(251,146,60,0.16)]">
+                    {creatingChat ? <Video className="h-7 w-7 animate-pulse" /> : <MessageSquarePlus className="h-7 w-7" />}
+                  </div>
+                  <h2 className="text-2xl font-semibold tracking-tight text-slate-900 md:text-3xl">
+                    Чатов пока нет
+                  </h2>
+                  <p className="mt-3 text-sm leading-7 text-slate-600 md:text-base">
+                    Найди пользователя по username в левой колонке и нажми на него — чат создастся сразу в базе.
+                  </p>
+
+                  <div className="mt-6 w-full rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4 text-left">
+                    <div className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-700">
+                      <Search className="h-4 w-4 text-orange-500" />
+                      Что делать дальше
+                    </div>
+                    <div className="space-y-2 text-sm text-slate-600">
+                      <div>1. Зарегистрируй второй аккаунт с другим email</div>
+                      <div>2. Войди под одним аккаунтом</div>
+                      <div>3. Слева введи @username второго пользователя</div>
+                      <div>4. Нажми на найденного пользователя — начнётся диалог</div>
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="mt-5 w-full rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                      {error}
+                    </div>
+                  )}
                 </div>
-                <h2 className="text-2xl font-semibold text-slate-900">Чатов пока нет</h2>
-                <p className="mt-3 text-sm leading-6 text-slate-600">
-                  Регистрация уже работает. Аккаунт создан, профиль можно открыть слева сверху.
-                  Следующий шаг — подключить создание диалогов и список реальных собеседников.
-                </p>
               </div>
-            </div>
+            </section>
           )}
         </main>
 

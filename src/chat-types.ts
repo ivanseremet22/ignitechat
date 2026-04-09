@@ -1,4 +1,3 @@
-
 export type EditableAuthProfile = {
   name: string;
   username: string;
@@ -57,6 +56,7 @@ export type Chat = {
   title: string;
   avatar: string;
   preview: string;
+  peerId?: string;
   pinned?: boolean;
   unread?: number;
   updatedAt: string;

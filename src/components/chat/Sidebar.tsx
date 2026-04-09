@@ -1,26 +1,10 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { Database, Flame, Search, UserRound, Wifi, WifiOff, X } from "lucide-react";
+import { Database, Flame, MessageSquarePlus, Search, UserRound, Wifi, WifiOff, X } from "lucide-react";
 import AppAvatar from "./AppAvatar";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-
-type SidebarProfile = {
-  name: string;
-  username: string;
-  avatar: string;
-  accent: string;
-  avatarUrl?: string;
-};
-
-type SidebarChat = {
-  id: string;
-  title: string;
-  avatar: string;
-  preview: string;
-  unread?: number;
-  updatedAt: string;
-};
+import type { Chat, UserProfile } from "../../chat-types";
 
 type SidebarProps = {
   isDesktop: boolean;
@@ -28,15 +12,16 @@ type SidebarProps = {
   onCloseMobile: () => void;
   provider: "mock" | "supabase";
   isLive: boolean;
-  myProfile: SidebarProfile | null;
+  myProfile: UserProfile | null;
   onOpenMyProfile: () => void;
   search: string;
   onSearchChange: (value: string) => void;
   loadingChats: boolean;
-  filteredChats: SidebarChat[];
-  activeChatId: string;
+  filteredChats: Chat[];
+  searchResults: UserProfile[];
+  activeChatId: string | null;
   onSelectChat: (chatId: string) => void;
-  qaScenarios: string[];
+  onStartChat: (userId: string) => void | Promise<void>;
   formatTime: (date: string) => string;
 };
 
@@ -52,11 +37,14 @@ export default function Sidebar({
   onSearchChange,
   loadingChats,
   filteredChats,
+  searchResults,
   activeChatId,
   onSelectChat,
-  qaScenarios,
+  onStartChat,
   formatTime,
 }: SidebarProps) {
+  const hasSearch = search.trim().length > 0;
+
   return (
     <motion.aside
       initial={false}
@@ -73,7 +61,7 @@ export default function Sidebar({
             </div>
             <div>
               <div className="text-base font-semibold tracking-tight text-slate-900">IgniteChat</div>
-              <div className="text-xs text-slate-500">Supabase-ready MVP shell</div>
+              <div className="text-xs text-slate-500">Реальные пользователи и реальные чаты</div>
             </div>
           </div>
           <Button
@@ -131,8 +119,8 @@ export default function Sidebar({
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input
             value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Поиск"
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Поиск чатов или @username"
             className="h-12 rounded-full border border-slate-200/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.92))] pl-11 text-slate-900 placeholder:text-slate-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] focus-visible:border-orange-300 focus-visible:ring-0"
           />
         </div>
@@ -140,6 +128,40 @@ export default function Sidebar({
 
       <div className="relative flex-1 overflow-y-auto px-3 py-3 pr-4">
         <div className="pointer-events-none absolute inset-x-3 top-0 h-10 rounded-t-[24px] bg-gradient-to-b from-slate-100/55 to-transparent" />
+
+        {hasSearch && searchResults.length > 0 && (
+          <div className="mb-5">
+            <div className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+              Люди
+            </div>
+            <div className="space-y-1">
+              {searchResults.map((profile) => (
+                <button
+                  key={profile.id}
+                  type="button"
+                  onClick={() => void onStartChat(profile.id)}
+                  className="flex w-full items-center gap-3 rounded-[18px] border border-slate-200/70 bg-white/90 px-3 py-3 text-left transition hover:bg-slate-50"
+                >
+                  <AppAvatar
+                    className="h-11 w-11 shrink-0"
+                    initials={profile.avatar}
+                    imageUrl={profile.avatarUrl}
+                    accent={profile.accent}
+                    fallbackClassName="text-slate-900"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold text-slate-900">{profile.name}</div>
+                    <div className="truncate text-xs text-slate-500">@{profile.username}</div>
+                  </div>
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+                    <MessageSquarePlus className="h-4 w-4" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="space-y-1">
           {loadingChats ? (
             <div className="rounded-2xl bg-white px-4 py-5 text-sm text-slate-500 ring-1 ring-slate-200/80">
@@ -147,7 +169,9 @@ export default function Sidebar({
             </div>
           ) : filteredChats.length === 0 ? (
             <div className="rounded-2xl bg-white px-4 py-5 text-sm text-slate-500 ring-1 ring-slate-200/80">
-              Ничего не найдено.
+              {hasSearch
+                ? "Чатов по запросу нет. Найди человека выше и начни диалог."
+                : "Чатов пока нет. Найди пользователя по username и создай первый диалог."}
             </div>
           ) : (
             filteredChats.map((chat) => {
@@ -185,17 +209,6 @@ export default function Sidebar({
               );
             })
           )}
-        </div>
-
-        <div className="mt-5 rounded-[18px] bg-[linear-gradient(180deg,rgba(247,249,252,0.94),rgba(255,248,240,0.78))] p-3 ring-1 ring-slate-200/80">
-          <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">Следующий слой</div>
-          <div className="space-y-2">
-            {qaScenarios.map((scenario) => (
-              <div key={scenario} className="rounded-2xl bg-white/75 px-3 py-2.5 text-xs text-slate-600 ring-1 ring-slate-200/60">
-                {scenario}
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     </motion.aside>
