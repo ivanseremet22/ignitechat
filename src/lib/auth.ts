@@ -1,5 +1,6 @@
 import { createClient, type User } from "@supabase/supabase-js";
 import type { RegisterPayload } from "../AuthPage";
+import type { EditableAuthProfile } from "../chat-types";
 
 export type AuthSubmitMode = "register" | "login";
 
@@ -9,134 +10,249 @@ const SUPABASE_ANON_KEY = "sb_publishable_9ySILz0thBKX8mP65CrmbA_CTIU8JKq";
 const AUTH_STORAGE_KEY = "ignite.auth";
 const PROFILE_STORAGE_KEY = "ignite.profile";
 
-export const authClient = SUPABASE_URL && SUPABASE_ANON_KEY
-  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-  : null;
+export const authClient =
+  SUPABASE_URL && SUPABASE_ANON_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+        },
+      })
+    : null;
 
 export const hasSupabaseAuth = Boolean(authClient);
 
-function getEmailName(email: string | undefined): string {
-  return email?.split("@")[0] || "User";
-}
-
-function getInitials(name: string): string {
-  return (
-    name
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase())
-      .join("") || "U"
-  );
-}
-
-export function readStoredProfile(): RegisterPayload | null {
+function safeStorageGet(key: string) {
   if (typeof window === "undefined") return null;
-
-  const raw = window.localStorage.getItem(PROFILE_STORAGE_KEY);
-  if (!raw) return null;
-
   try {
-    return JSON.parse(raw) as RegisterPayload;
+    return window.localStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-export function readStoredAuthFlag(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(AUTH_STORAGE_KEY) === "1";
-}
-
-export function writeStoredProfile(profile: RegisterPayload): void {
+function safeStorageSet(key: string, value: string) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {}
 }
 
-export function markStoredAuthenticated(value: boolean): void {
+function safeStorageRemove(key: string) {
   if (typeof window === "undefined") return;
-  if (value) {
-    window.localStorage.setItem(AUTH_STORAGE_KEY, "1");
-  } else {
-    window.localStorage.removeItem(AUTH_STORAGE_KEY);
-  }
+  try {
+    window.localStorage.removeItem(key);
+  } catch {}
 }
 
-export function clearStoredAuth(): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem(AUTH_STORAGE_KEY);
-  window.localStorage.removeItem(PROFILE_STORAGE_KEY);
-}
-
-function normalizeProfile(payload: RegisterPayload, fallbackEmail = ""): RegisterPayload {
-  const normalizedName = payload.name.trim() || getEmailName(payload.email || fallbackEmail);
-  const normalizedUsername =
-    payload.username.trim().replace(/^@+/, "").replace(/\s+/g, "").toLowerCase() ||
-    getEmailName(payload.email || fallbackEmail).replace(/\s+/g, "").toLowerCase();
-
+function normalizeProfile(payload: Partial<EditableAuthProfile>): EditableAuthProfile {
   return {
-    name: normalizedName,
-    username: normalizedUsername,
-    bio: payload.bio.trim(),
-    email: payload.email.trim() || fallbackEmail,
-    password: payload.password,
+    name: (payload.name || "").trim(),
+    username: (payload.username || "")
+      .trim()
+      .replace(/^@+/, "")
+      .replace(/\s+/g, "")
+      .toLowerCase(),
+    bio: (payload.bio || "").trim(),
+    email: (payload.email || "").trim(),
+    password: payload.password || "",
+    phone: (payload.phone || "").trim(),
+    location: (payload.location || "").trim(),
+    statusText: (payload.statusText || "").trim(),
+    avatarDataUrl: payload.avatarDataUrl || "",
   };
 }
 
-function mergeUserWithStoredProfile(user: User, storedProfile: RegisterPayload | null): RegisterPayload {
-  const email = user.email || storedProfile?.email || "";
-  const metadata = user.user_metadata ?? {};
-  const draft = {
-    name: typeof metadata.name === "string" ? metadata.name : storedProfile?.name || getEmailName(email),
-    username:
-      typeof metadata.username === "string"
-        ? metadata.username
-        : storedProfile?.username || getEmailName(email).replace(/\s+/g, "").toLowerCase(),
-    bio: typeof metadata.bio === "string" ? metadata.bio : storedProfile?.bio || "",
-    email,
-    password: storedProfile?.password || "",
-  };
+export function getInitials(name: string) {
+  const tokens = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
 
-  return normalizeProfile(draft, email);
+  if (tokens.length === 0) return "U";
+  return tokens.map((token) => token[0]!.toUpperCase()).join("");
 }
 
-async function readProfileFromSupabase(user: User, storedProfile: RegisterPayload | null): Promise<RegisterPayload | null> {
-  if (!authClient) {
-    return storedProfile;
+export function readStoredAuthFlag() {
+  return safeStorageGet(AUTH_STORAGE_KEY) === "1";
+}
+
+export function readStoredProfile(): EditableAuthProfile | null {
+  const raw = safeStorageGet(PROFILE_STORAGE_KEY);
+  if (!raw) return null;
+
+  try {
+    return normalizeProfile(JSON.parse(raw));
+  } catch {
+    return null;
   }
+}
 
-  const result = await authClient
+async function upsertProfile(user: User, profile: EditableAuthProfile) {
+  if (!authClient) return;
+
+  const username =
+    profile.username ||
+    (user.email ? user.email.split("@")[0] : `user_${user.id.slice(0, 6)}`).toLowerCase();
+
+  const name =
+    profile.name ||
+    user.user_metadata?.name ||
+    user.user_metadata?.username ||
+    username;
+
+  const bio = profile.bio || "";
+  const phone = profile.phone || "";
+  const location = profile.location || "";
+  const status = profile.statusText || "";
+  const avatarUrl = profile.avatarDataUrl || "";
+
+  const { error } = await authClient.from("profiles").upsert(
+    {
+      id: user.id,
+      username,
+      name,
+      bio,
+      phone,
+      location,
+      status,
+      avatar_url: avatarUrl,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "id" },
+  );
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function fetchProfileByUserId(userId: string) {
+  if (!authClient) return null;
+
+  const { data, error } = await authClient
     .from("profiles")
-    .select("name,username,bio,email")
-    .eq("id", user.id)
+    .select("*")
+    .eq("id", userId)
     .maybeSingle();
 
-  if (result.error || !result.data) {
-    return storedProfile;
+  if (error) {
+    throw error;
   }
 
-  return normalizeProfile(
-    {
-      name: result.data.name || storedProfile?.name || getEmailName(user.email),
-      username: result.data.username || storedProfile?.username || getEmailName(user.email).toLowerCase(),
-      bio: result.data.bio || storedProfile?.bio || "",
-      email: result.data.email || user.email || storedProfile?.email || "",
-      password: storedProfile?.password || "",
-    },
-    user.email || storedProfile?.email || "",
-  );
+  return data;
 }
 
-export async function restoreAuthProfile(): Promise<{
-  isAuthenticated: boolean;
-  profile: RegisterPayload | null;
-}> {
-  const storedProfile = readStoredProfile();
+export async function syncProfileToSupabase(profile: EditableAuthProfile) {
+  const normalized = normalizeProfile(profile);
+  safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(normalized));
+
+  if (!authClient) return normalized;
+
+  const {
+    data: { user },
+    error: userError,
+  } = await authClient.auth.getUser();
+
+  if (userError) throw userError;
+  if (!user) return normalized;
+
+  await upsertProfile(user, normalized);
+  return normalized;
+}
+
+export async function submitAuth(payload: RegisterPayload, mode: AuthSubmitMode) {
+  const profile = normalizeProfile({
+    name: payload.name,
+    username: payload.username,
+    bio: payload.bio,
+    email: payload.email,
+    password: payload.password,
+    phone: payload.phone,
+    location: payload.location,
+    statusText: payload.statusText,
+    avatarDataUrl: payload.avatarDataUrl,
+  });
+
+  if (!authClient) {
+    safeStorageSet(AUTH_STORAGE_KEY, "1");
+    safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+    return profile;
+  }
+
+  if (mode === "register") {
+    const { data, error } = await authClient.auth.signUp({
+      email: profile.email,
+      password: profile.password,
+      options: {
+        data: {
+          name: profile.name,
+          username: profile.username,
+          bio: profile.bio,
+          phone: profile.phone,
+          location: profile.location,
+          statusText: profile.statusText,
+          avatarDataUrl: profile.avatarDataUrl,
+        },
+      },
+    });
+
+    if (error) throw error;
+
+    const user = data.user;
+    if (!user) {
+      throw new Error("Не удалось создать пользователя.");
+    }
+
+    await upsertProfile(user, profile);
+    safeStorageSet(AUTH_STORAGE_KEY, "1");
+    safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+    return profile;
+  }
+
+  const { data, error } = await authClient.auth.signInWithPassword({
+    email: profile.email,
+    password: profile.password,
+  });
+
+  if (error) throw error;
+  if (!data.user) throw new Error("Не удалось выполнить вход.");
+
+  const existingProfile = await fetchProfileByUserId(data.user.id);
+
+  const mergedProfile = normalizeProfile({
+    ...profile,
+    name: existingProfile?.name || profile.name,
+    username: existingProfile?.username || profile.username,
+    bio: existingProfile?.bio || profile.bio,
+    phone: existingProfile?.phone || profile.phone,
+    location: existingProfile?.location || profile.location,
+    statusText: existingProfile?.status || profile.statusText,
+    avatarDataUrl: existingProfile?.avatar_url || profile.avatarDataUrl,
+  });
+
+  safeStorageSet(AUTH_STORAGE_KEY, "1");
+  safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(mergedProfile));
+  return mergedProfile;
+}
+
+export async function signOutApp() {
+  safeStorageRemove(AUTH_STORAGE_KEY);
+  safeStorageRemove(PROFILE_STORAGE_KEY);
+
+  if (!authClient) return;
+  await authClient.auth.signOut();
+}
+
+export async function restoreAuthProfile() {
+  const fallbackProfile = readStoredProfile();
 
   if (!authClient) {
     return {
       isAuthenticated: readStoredAuthFlag(),
-      profile: storedProfile,
+      profile: fallbackProfile,
     };
   }
 
@@ -145,136 +261,60 @@ export async function restoreAuthProfile(): Promise<{
   } = await authClient.auth.getSession();
 
   if (!session?.user) {
+    safeStorageRemove(AUTH_STORAGE_KEY);
     return {
       isAuthenticated: false,
-      profile: storedProfile,
+      profile: fallbackProfile,
     };
   }
 
-  const profileFromDb = await readProfileFromSupabase(session.user, storedProfile);
-  const mergedProfile = profileFromDb || mergeUserWithStoredProfile(session.user, storedProfile);
-  writeStoredProfile(mergedProfile);
-  markStoredAuthenticated(true);
+  const dbProfile = await fetchProfileByUserId(session.user.id);
+
+  const restored = normalizeProfile({
+    name:
+      dbProfile?.name ||
+      session.user.user_metadata?.name ||
+      fallbackProfile?.name ||
+      "",
+    username:
+      dbProfile?.username ||
+      session.user.user_metadata?.username ||
+      fallbackProfile?.username ||
+      "",
+    bio:
+      dbProfile?.bio ||
+      session.user.user_metadata?.bio ||
+      fallbackProfile?.bio ||
+      "",
+    email: session.user.email || fallbackProfile?.email || "",
+    password: fallbackProfile?.password || "",
+    phone:
+      dbProfile?.phone ||
+      session.user.user_metadata?.phone ||
+      fallbackProfile?.phone ||
+      "",
+    location:
+      dbProfile?.location ||
+      session.user.user_metadata?.location ||
+      fallbackProfile?.location ||
+      "",
+    statusText:
+      dbProfile?.status ||
+      session.user.user_metadata?.statusText ||
+      fallbackProfile?.statusText ||
+      "",
+    avatarDataUrl:
+      dbProfile?.avatar_url ||
+      session.user.user_metadata?.avatarDataUrl ||
+      fallbackProfile?.avatarDataUrl ||
+      "",
+  });
+
+  safeStorageSet(AUTH_STORAGE_KEY, "1");
+  safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(restored));
 
   return {
     isAuthenticated: true,
-    profile: mergedProfile,
+    profile: restored,
   };
-}
-
-export async function syncProfileToSupabase(profile: RegisterPayload & {
-  statusText?: string;
-  avatarDataUrl?: string;
-  phone?: string;
-  location?: string;
-}): Promise<void> {
-  if (!authClient) return;
-
-  const {
-    data: { user },
-  } = await authClient.auth.getUser();
-
-  if (!user) return;
-
-  const normalized = normalizeProfile(profile, user.email || "");
-
-  const upsertResult = await authClient.from("profiles").upsert(
-    {
-      id: user.id,
-      email: normalized.email || user.email || "",
-      name: normalized.name,
-      username: normalized.username,
-      bio: normalized.bio,
-      avatar: getInitials(normalized.name),
-      avatar_url: profile.avatarDataUrl || null,
-      online: true,
-      status: profile.statusText?.trim() || "в сети",
-      phone: profile.phone?.trim() || null,
-      location: profile.location?.trim() || null,
-      role: "Member",
-    },
-    { onConflict: "id" },
-  );
-
-  if (upsertResult.error) {
-    throw new Error(upsertResult.error.message);
-  }
-}
-
-export async function submitAuth(
-  payload: RegisterPayload,
-  mode: AuthSubmitMode,
-): Promise<RegisterPayload> {
-  const normalized = normalizeProfile(payload);
-
-  if (!authClient) {
-    writeStoredProfile(normalized);
-    markStoredAuthenticated(true);
-    return normalized;
-  }
-
-  if (!normalized.email || !normalized.password) {
-    throw new Error("Для входа и регистрации нужны email и пароль.");
-  }
-
-  if (mode === "register") {
-    const signUpResult = await authClient.auth.signUp({
-      email: normalized.email,
-      password: normalized.password,
-      options: {
-        data: {
-          name: normalized.name,
-          username: normalized.username,
-          bio: normalized.bio,
-        },
-      },
-    });
-
-    if (signUpResult.error) {
-      throw new Error(signUpResult.error.message);
-    }
-
-    const activeUser = signUpResult.data.user;
-    const activeSession = signUpResult.data.session;
-
-    if (!activeUser) {
-      throw new Error("Не удалось создать аккаунт.");
-    }
-
-    writeStoredProfile(normalized);
-
-    if (!activeSession) {
-      throw new Error("Аккаунт создан. Подтверди email по ссылке в письме, потом войди.");
-    }
-
-    await syncProfileToSupabase(normalized);
-    markStoredAuthenticated(true);
-    return normalized;
-  }
-
-  const signInResult = await authClient.auth.signInWithPassword({
-    email: normalized.email,
-    password: normalized.password,
-  });
-
-  if (signInResult.error || !signInResult.data.user) {
-    throw new Error(signInResult.error?.message || "Не удалось войти в аккаунт.");
-  }
-
-  const nextProfile = await readProfileFromSupabase(
-    signInResult.data.user,
-    readStoredProfile() ?? normalized,
-  );
-
-  const merged = nextProfile || mergeUserWithStoredProfile(signInResult.data.user, readStoredProfile() ?? normalized);
-  writeStoredProfile(merged);
-  markStoredAuthenticated(true);
-  return merged;
-}
-
-export async function signOutApp(): Promise<void> {
-  if (authClient) {
-    await authClient.auth.signOut();
-  }
-  clearStoredAuth();
 }

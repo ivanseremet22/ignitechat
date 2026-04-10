@@ -8,6 +8,10 @@ export type AuthFormState = {
   bio: string;
   email: string;
   password: string;
+  phone?: string;
+  location?: string;
+  statusText?: string;
+  avatarDataUrl?: string;
 };
 
 export type RegisterPayload = AuthFormState;

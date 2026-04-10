@@ -1,25 +1,15 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { RealtimeChannel, SupabaseClient, User } from "@supabase/supabase-js";
 import type { Chat, Message, Reaction, UserProfile } from "../chat-types";
 
-type ProfileRow = {
+type ProfileRow = Record<string, unknown> & {
   id: string;
-  email: string | null;
-  name: string | null;
-  username: string | null;
-  bio: string | null;
-  avatar: string | null;
-  avatar_url: string | null;
-  online: boolean | null;
-  status: string | null;
-  phone: string | null;
-  location: string | null;
-  joined_at: string | null;
-  role: string | null;
+  username?: string | null;
+  created_at?: string | null;
 };
 
 type ConversationRow = {
   id: string;
-  updated_at: string;
+  updated_at: string | null;
   last_message_preview: string | null;
 };
 
@@ -44,6 +34,18 @@ type ReactionRow = {
   user_id: string;
   type: Reaction["type"];
 };
+
+function getString(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function getNullableString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function getBoolean(value: unknown, fallback = false): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
 
 function getInitials(name: string): string {
   return (
@@ -75,31 +77,63 @@ function formatJoinedAt(value: string | null): string {
   return new Date(value).toLocaleDateString();
 }
 
-function assertNoError<T>(result: { data: T; error: { message: string } | null }, fallback: string): T {
-  if (result.error) {
-    throw new Error(result.error.message || fallback);
-  }
-  return result.data;
+function isMissingSchemaError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("does not exist") ||
+    normalized.includes("could not find") ||
+    normalized.includes("schema cache") ||
+    normalized.includes("column") ||
+    normalized.includes("relation")
+  );
 }
 
-function mapProfile(row: ProfileRow): UserProfile {
-  const name = row.name?.trim() || row.username?.trim() || row.email?.split("@")[0] || "User";
+function normalizeProfileRow(row: ProfileRow, authUser?: User | null): UserProfile {
+  const email = getNullableString(row.email) ?? authUser?.email ?? null;
+
+  const username =
+    getString(row.username).trim() ||
+    getString(row.name).trim().toLowerCase().replace(/\s+/g, "") ||
+    (email ? email.split("@")[0] : "") ||
+    `user_${row.id.slice(0, 6)}`;
+
+  const name =
+    getString(row.name).trim() ||
+    getString(row.full_name).trim() ||
+    username ||
+    (email ? email.split("@")[0] : "User");
+
+  const status =
+    getString(row.status).trim() ||
+    getString(row.status_text).trim() ||
+    "не в сети";
+
+  const joinedAtRaw =
+    getNullableString(row.joined_at) ??
+    getNullableString(row.created_at) ??
+    authUser?.created_at ??
+    null;
+
+  const avatarUrl =
+    getString(row.avatar_url).trim() ||
+    getString(row.avatar).trim() ||
+    getString(row.avatarDataUrl).trim();
 
   return {
     id: row.id,
     name,
-    avatar: row.avatar?.trim() || getInitials(name),
-    online: row.online ?? false,
-    status: row.status?.trim() || "не в сети",
-    username: row.username?.trim() || name.toLowerCase().replace(/\s+/g, "."),
-    bio: row.bio?.trim() || "Пока без описания.",
-    phone: row.phone?.trim() || "—",
-    location: row.location?.trim() || "—",
-    joinedAt: formatJoinedAt(row.joined_at),
-    role: row.role?.trim() || "Member",
+    avatar: getInitials(name),
+    online: getBoolean(row.online, false),
+    status,
+    username,
+    bio: getString(row.bio).trim() || "Пока без описания.",
+    phone: getString(row.phone).trim() || "—",
+    location: getString(row.location).trim() || "—",
+    joinedAt: formatJoinedAt(joinedAtRaw),
+    role: getString(row.role).trim() || "Member",
     accent: makeAccent(row.id),
     interests: ["Chat"],
-    avatarUrl: row.avatar_url?.trim() || undefined,
+    avatarUrl: avatarUrl || undefined,
   };
 }
 
@@ -126,37 +160,73 @@ function mapMessages(rows: MessageRow[], reactions: ReactionRow[]): Message[] {
     .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
 }
 
-export async function fetchCurrentProfile(client: SupabaseClient): Promise<UserProfile> {
+async function getAuthenticatedUser(client: SupabaseClient): Promise<User> {
   const userResult = await client.auth.getUser();
   const user = userResult.data.user;
+
   if (!user) {
     throw new Error("Сессия не найдена.");
   }
 
-  const profileResult = await client
-    .from("profiles")
-    .select("id,email,name,username,bio,avatar,avatar_url,online,status,phone,location,joined_at,role")
-    .eq("id", user.id)
-    .maybeSingle();
+  return user;
+}
 
-  const profile = assertNoError(profileResult, "Не удалось загрузить профиль.");
+async function fetchProfileRows(
+  client: SupabaseClient,
+  query: { userId?: string; excludeUserId?: string; ids?: string[] } = {},
+): Promise<ProfileRow[]> {
+  let builder = client.from("profiles").select("*");
 
-  if (!profile) {
-    throw new Error("Профиль не найден. Выполни SQL-скрипт и войди заново.");
+  if (query.userId) {
+    builder = builder.eq("id", query.userId);
   }
 
-  return mapProfile(profile as ProfileRow);
+  if (query.excludeUserId) {
+    builder = builder.neq("id", query.excludeUserId);
+  }
+
+  if (query.ids && query.ids.length > 0) {
+    builder = builder.in("id", query.ids);
+  }
+
+  builder = builder.order("username", { ascending: true });
+
+  const result = await builder;
+
+  if (result.error) {
+    throw new Error(result.error.message || "Не удалось загрузить profiles.");
+  }
+
+  return (result.data ?? []) as ProfileRow[];
+}
+
+export async function fetchCurrentProfile(client: SupabaseClient): Promise<UserProfile> {
+  const user = await getAuthenticatedUser(client);
+  const rows = await fetchProfileRows(client, { userId: user.id });
+  const profile = rows[0];
+
+  if (!profile) {
+    return normalizeProfileRow(
+      {
+        id: user.id,
+        username: user.email?.split("@")[0] ?? null,
+        created_at: user.created_at,
+      },
+      user,
+    );
+  }
+
+  return normalizeProfileRow(profile, user);
 }
 
 export async function fetchUsers(client: SupabaseClient, currentUserId: string): Promise<UserProfile[]> {
-  const result = await client
-    .from("profiles")
-    .select("id,email,name,username,bio,avatar,avatar_url,online,status,phone,location,joined_at,role")
-    .neq("id", currentUserId)
-    .order("username", { ascending: true });
-
-  const rows = assertNoError(result, "Не удалось загрузить список пользователей.");
-  return (rows as ProfileRow[]).map(mapProfile);
+  try {
+    const rows = await fetchProfileRows(client, { excludeUserId: currentUserId });
+    return rows.map((row) => normalizeProfileRow(row));
+  } catch (error) {
+    console.error("fetchUsers error:", error);
+    return [];
+  }
 }
 
 export async function fetchChats(client: SupabaseClient, currentUserId: string): Promise<Chat[]> {
@@ -165,7 +235,15 @@ export async function fetchChats(client: SupabaseClient, currentUserId: string):
     .select("conversation_id,user_id")
     .eq("user_id", currentUserId);
 
-  const myParticipants = assertNoError(participantResult, "Не удалось загрузить чаты.") as ConversationParticipantRow[];
+  if (participantResult.error) {
+    if (isMissingSchemaError(participantResult.error.message)) {
+      return [];
+    }
+
+    throw new Error(participantResult.error.message || "Не удалось загрузить чаты.");
+  }
+
+  const myParticipants = (participantResult.data ?? []) as ConversationParticipantRow[];
   const conversationIds = myParticipants.map((row) => row.conversation_id);
 
   if (conversationIds.length === 0) {
@@ -178,13 +256,29 @@ export async function fetchChats(client: SupabaseClient, currentUserId: string):
     .in("id", conversationIds)
     .order("updated_at", { ascending: false });
 
+  if (conversationsResult.error) {
+    if (isMissingSchemaError(conversationsResult.error.message)) {
+      return [];
+    }
+
+    throw new Error(conversationsResult.error.message || "Не удалось загрузить чаты.");
+  }
+
   const participantsResult = await client
     .from("conversation_participants")
     .select("conversation_id,user_id")
     .in("conversation_id", conversationIds);
 
-  const conversations = assertNoError(conversationsResult, "Не удалось загрузить чаты.") as ConversationRow[];
-  const allParticipants = assertNoError(participantsResult, "Не удалось загрузить участников.") as ConversationParticipantRow[];
+  if (participantsResult.error) {
+    if (isMissingSchemaError(participantsResult.error.message)) {
+      return [];
+    }
+
+    throw new Error(participantsResult.error.message || "Не удалось загрузить участников.");
+  }
+
+  const conversations = (conversationsResult.data ?? []) as ConversationRow[];
+  const allParticipants = (participantsResult.data ?? []) as ConversationParticipantRow[];
 
   const otherUserIds = Array.from(
     new Set(
@@ -197,14 +291,14 @@ export async function fetchChats(client: SupabaseClient, currentUserId: string):
   const profilesMap = new Map<string, UserProfile>();
 
   if (otherUserIds.length > 0) {
-    const profilesResult = await client
-      .from("profiles")
-      .select("id,email,name,username,bio,avatar,avatar_url,online,status,phone,location,joined_at,role")
-      .in("id", otherUserIds);
+    try {
+      const profileRows = await fetchProfileRows(client, { ids: otherUserIds });
 
-    const profileRows = assertNoError(profilesResult, "Не удалось загрузить профили.") as ProfileRow[];
-    for (const profile of profileRows) {
-      profilesMap.set(profile.id, mapProfile(profile));
+      for (const profile of profileRows) {
+        profilesMap.set(profile.id, normalizeProfileRow(profile));
+      }
+    } catch (error) {
+      console.error("fetchChats profiles error:", error);
     }
   }
 
@@ -213,14 +307,16 @@ export async function fetchChats(client: SupabaseClient, currentUserId: string):
       (participant) =>
         participant.conversation_id === conversation.id && participant.user_id !== currentUserId,
     );
-    const peerProfile = peerParticipant ? profilesMap.get(peerParticipant.user_id) : null;
+
+    const peerProfile = peerParticipant ? profilesMap.get(peerParticipant.user_id) : undefined;
+    const title = peerProfile?.name || peerProfile?.username || "Новый чат";
 
     return {
       id: conversation.id,
-      title: peerProfile?.name || "Новый чат",
-      avatar: peerProfile?.avatar || "CH",
+      title,
+      avatar: peerProfile?.avatar || getInitials(title),
       preview: conversation.last_message_preview?.trim() || "Сообщений пока нет",
-      updatedAt: conversation.updated_at,
+      updatedAt: conversation.updated_at || new Date().toISOString(),
       unread: 0,
       pinned: false,
       peerId: peerProfile?.id,
@@ -235,7 +331,15 @@ export async function fetchMessages(client: SupabaseClient, conversationId: stri
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
 
-  const messageRows = assertNoError(messagesResult, "Не удалось загрузить сообщения.") as MessageRow[];
+  if (messagesResult.error) {
+    if (isMissingSchemaError(messagesResult.error.message)) {
+      return [];
+    }
+
+    throw new Error(messagesResult.error.message || "Не удалось загрузить сообщения.");
+  }
+
+  const messageRows = (messagesResult.data ?? []) as MessageRow[];
 
   if (messageRows.length === 0) {
     return [];
@@ -246,7 +350,15 @@ export async function fetchMessages(client: SupabaseClient, conversationId: stri
     .select("message_id,user_id,type")
     .in("message_id", messageRows.map((row) => row.id));
 
-  const reactionRows = assertNoError(reactionsResult, "Не удалось загрузить реакции.") as ReactionRow[];
+  if (reactionsResult.error) {
+    if (isMissingSchemaError(reactionsResult.error.message)) {
+      return mapMessages(messageRows, []);
+    }
+
+    throw new Error(reactionsResult.error.message || "Не удалось загрузить реакции.");
+  }
+
+  const reactionRows = (reactionsResult.data ?? []) as ReactionRow[];
   return mapMessages(messageRows, reactionRows);
 }
 
@@ -260,7 +372,11 @@ export async function createOrGetDirectConversation(
     .select("conversation_id,user_id")
     .eq("user_id", currentUserId);
 
-  const myRows = assertNoError(mineResult, "Не удалось найти чаты.") as ConversationParticipantRow[];
+  if (mineResult.error) {
+    throw new Error(mineResult.error.message || "Не удалось найти чаты.");
+  }
+
+  const myRows = (mineResult.data ?? []) as ConversationParticipantRow[];
   const conversationIds = myRows.map((row) => row.conversation_id);
 
   if (conversationIds.length > 0) {
@@ -269,9 +385,13 @@ export async function createOrGetDirectConversation(
       .select("conversation_id,user_id")
       .in("conversation_id", conversationIds);
 
-    const participants = assertNoError(participantsResult, "Не удалось проверить участников.") as ConversationParticipantRow[];
+    if (participantsResult.error) {
+      throw new Error(participantsResult.error.message || "Не удалось проверить участников.");
+    }
 
+    const participants = (participantsResult.data ?? []) as ConversationParticipantRow[];
     const participantMap = new Map<string, string[]>();
+
     for (const row of participants) {
       const list = participantMap.get(row.conversation_id) ?? [];
       list.push(row.user_id);
@@ -280,6 +400,7 @@ export async function createOrGetDirectConversation(
 
     for (const [conversationId, memberIds] of participantMap.entries()) {
       const unique = Array.from(new Set(memberIds));
+
       if (
         unique.length === 2 &&
         unique.includes(currentUserId) &&
@@ -298,26 +419,34 @@ export async function createOrGetDirectConversation(
     .select("id")
     .single();
 
-  const conversation = assertNoError(conversationInsert, "Не удалось создать чат.") as { id: string };
+  if (conversationInsert.error || !conversationInsert.data) {
+    throw new Error(conversationInsert.error?.message || "Не удалось создать чат.");
+  }
 
   const participantInsert = await client
     .from("conversation_participants")
     .insert([
-      { conversation_id: conversation.id, user_id: currentUserId },
-      { conversation_id: conversation.id, user_id: otherUserId },
+      { conversation_id: conversationInsert.data.id, user_id: currentUserId },
+      { conversation_id: conversationInsert.data.id, user_id: otherUserId },
     ]);
 
-  assertNoError(participantInsert, "Не удалось добавить участников.");
-  return conversation.id;
+  if (participantInsert.error) {
+    throw new Error(participantInsert.error.message || "Не удалось добавить участников.");
+  }
+
+  return conversationInsert.data.id;
 }
 
-export async function sendMessageToConversation(client: SupabaseClient, input: {
-  conversationId: string;
-  senderId: string;
-  text: string;
-  replyTo?: string;
-  voice?: number;
-}): Promise<void> {
+export async function sendMessageToConversation(
+  client: SupabaseClient,
+  input: {
+    conversationId: string;
+    senderId: string;
+    text: string;
+    replyTo?: string;
+    voice?: number;
+  },
+): Promise<void> {
   const preview = input.voice
     ? "🎤 Голосовое сообщение"
     : input.text.trim() || "Сообщение";
@@ -333,7 +462,9 @@ export async function sendMessageToConversation(client: SupabaseClient, input: {
       voice_url: null,
     });
 
-  assertNoError(messageInsert, "Не удалось отправить сообщение.");
+  if (messageInsert.error) {
+    throw new Error(messageInsert.error.message || "Не удалось отправить сообщение.");
+  }
 
   const conversationUpdate = await client
     .from("conversations")
@@ -343,14 +474,19 @@ export async function sendMessageToConversation(client: SupabaseClient, input: {
     })
     .eq("id", input.conversationId);
 
-  assertNoError(conversationUpdate, "Не удалось обновить чат.");
+  if (conversationUpdate.error) {
+    throw new Error(conversationUpdate.error.message || "Не удалось обновить чат.");
+  }
 }
 
-export async function toggleMessageReaction(client: SupabaseClient, input: {
-  messageId: string;
-  userId: string;
-  type: Reaction["type"];
-}): Promise<void> {
+export async function toggleMessageReaction(
+  client: SupabaseClient,
+  input: {
+    messageId: string;
+    userId: string;
+    type: Reaction["type"];
+  },
+): Promise<void> {
   const existingResult = await client
     .from("message_reactions")
     .select("message_id,user_id,type")
@@ -359,7 +495,11 @@ export async function toggleMessageReaction(client: SupabaseClient, input: {
     .eq("type", input.type)
     .maybeSingle();
 
-  const existing = assertNoError(existingResult, "Не удалось проверить реакцию.");
+  if (existingResult.error) {
+    throw new Error(existingResult.error.message || "Не удалось проверить реакцию.");
+  }
+
+  const existing = existingResult.data;
 
   if (existing) {
     const removeResult = await client
@@ -369,7 +509,10 @@ export async function toggleMessageReaction(client: SupabaseClient, input: {
       .eq("user_id", input.userId)
       .eq("type", input.type);
 
-    assertNoError(removeResult, "Не удалось убрать реакцию.");
+    if (removeResult.error) {
+      throw new Error(removeResult.error.message || "Не удалось убрать реакцию.");
+    }
+
     return;
   }
 
@@ -379,7 +522,9 @@ export async function toggleMessageReaction(client: SupabaseClient, input: {
     .eq("message_id", input.messageId)
     .eq("user_id", input.userId);
 
-  assertNoError(removeOtherTypes, "Не удалось обновить реакцию.");
+  if (removeOtherTypes.error) {
+    throw new Error(removeOtherTypes.error.message || "Не удалось обновить реакцию.");
+  }
 
   const insertResult = await client
     .from("message_reactions")
@@ -389,7 +534,9 @@ export async function toggleMessageReaction(client: SupabaseClient, input: {
       type: input.type,
     });
 
-  assertNoError(insertResult, "Не удалось сохранить реакцию.");
+  if (insertResult.error) {
+    throw new Error(insertResult.error.message || "Не удалось сохранить реакцию.");
+  }
 }
 
 export function subscribeToConversation(
@@ -397,21 +544,38 @@ export function subscribeToConversation(
   conversationId: string,
   callback: () => void,
 ): () => void {
-  const channel = client
-    .channel(`conversation:${conversationId}`)
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
-      () => callback(),
-    )
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "message_reactions" },
-      () => callback(),
-    )
-    .subscribe();
+  let channel: RealtimeChannel | null = null;
+
+  try {
+    channel = client
+      .channel(`conversation:${conversationId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        () => callback(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "message_reactions",
+        },
+        () => callback(),
+      )
+      .subscribe();
+  } catch (error) {
+    console.error("subscribeToConversation error:", error);
+  }
 
   return () => {
-    void client.removeChannel(channel);
+    if (channel) {
+      void client.removeChannel(channel);
+    }
   };
 }

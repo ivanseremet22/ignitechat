@@ -206,7 +206,57 @@ export default function App() {
       setError(null);
 
       try {
-        const nextCurrentProfile = await fetchCurrentProfile(client);
+        let nextCurrentProfile: UserProfile | null = null;
+
+        try {
+          nextCurrentProfile = await fetchCurrentProfile(client);
+        } catch {
+          const {
+            data: { user },
+          } = await client.auth.getUser();
+
+          if (!user) {
+            throw new Error("Сессия пользователя не найдена.");
+          }
+
+          const { data: profileRows, error: profileError } = await client
+            .from("profiles")
+            .select("id, username, created_at")
+            .eq("id", user.id)
+            .limit(1);
+
+          if (profileError) {
+            throw profileError;
+          }
+
+          const row = profileRows?.[0];
+
+          if (!row) {
+            throw new Error("Профиль в таблице profiles не найден.");
+          }
+
+          nextCurrentProfile = {
+            id: row.id,
+            name: authProfile?.name || row.username || "User",
+            username: row.username || "user",
+            bio: authProfile?.bio || "",
+            avatar: getInitials(authProfile?.name || row.username || "User"),
+            avatarUrl: authProfile?.avatarDataUrl || "",
+            phone: authProfile?.phone || "—",
+            location: authProfile?.location || "—",
+            status: authProfile?.statusText || "В сети",
+            joinedAt: row.created_at || new Date().toISOString(),
+            online: true,
+            role: "Member",
+            accent: "from-amber-300 via-orange-200 to-yellow-100",
+            interests: ["Chat"],
+          };
+        }
+
+        if (!nextCurrentProfile) {
+          throw new Error("Не удалось собрать currentProfile.");
+        }
+
         const [nextUsers, nextChats] = await Promise.all([
           fetchUsers(client, nextCurrentProfile.id),
           fetchChats(client, nextCurrentProfile.id),
@@ -632,10 +682,16 @@ export default function App() {
     return (
       <div className="flex min-h-[100svh] items-center justify-center bg-[linear-gradient(180deg,#f8fafc_0%,#f6f1ea_100%)] px-4 text-slate-900">
         <div className="max-w-xl rounded-3xl border border-slate-200/90 bg-white/95 px-6 py-5 text-sm text-slate-600 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
-          <div className="mb-2 text-base font-semibold text-slate-900">Профиль ещё не готов</div>
-          <div>
-            Выполни SQL-скрипт для таблиц чата и profiles, затем перезайди в аккаунт.
+          <div className="mb-2 text-base font-semibold text-slate-900">Не удалось загрузить профиль</div>
+          <div className="mb-4">
+            Профиль есть в базе, но приложение не смогло его подтянуть. Нажми «Выйти» и войди снова.
           </div>
+          <button
+            onClick={() => void signOutToRegistration()}
+            className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            Выйти
+          </button>
         </div>
       </div>
     );
