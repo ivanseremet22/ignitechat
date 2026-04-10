@@ -3,8 +3,8 @@ import type { RegisterPayload } from "../AuthPage";
 
 export type AuthSubmitMode = "register" | "login";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? "";
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
+const SUPABASE_URL = "https://ygjooznsqgnlhfbwwtsq.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_9ySILz0thBKX8mP65CrmbA_CTIU8JKq";
 
 const AUTH_STORAGE_KEY = "ignite.auth";
 const PROFILE_STORAGE_KEY = "ignite.profile";
