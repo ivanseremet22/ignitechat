@@ -4,8 +4,12 @@ import type { EditableAuthProfile } from "../chat-types";
 
 export type AuthSubmitMode = "register" | "login";
 
-const SUPABASE_URL = "https://ygjooznsqgnlhfbwwtsq.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_9ySILz0thBKX8mP65CrmbA_CTIU8JKq";
+const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
+
+const SUPABASE_URL =
+  env?.VITE_SUPABASE_URL?.trim() || "https://ygjooznsqgnlhfbwwtsq.supabase.co";
+const SUPABASE_ANON_KEY =
+  env?.VITE_SUPABASE_ANON_KEY?.trim() || "sb_publishable_9ySILz0thBKX8mP65CrmbA_CTIU8JKq";
 
 const AUTH_STORAGE_KEY = "ignite.auth";
 const PROFILE_STORAGE_KEY = "ignite.profile";
