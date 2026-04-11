@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { MessageSquarePlus, Search, Video } from "lucide-react";
+import { MessageSquarePlus, Search, UserRound, Video } from "lucide-react";
 import AuthPage, { type AuthMode, type RegisterPayload, getInitials } from "./AuthPage";
 import type { Chat, EditableAuthProfile, Message, Reaction, UserProfile } from "./chat-types";
 import Sidebar from "./components/chat/Sidebar";
@@ -116,6 +116,7 @@ export default function App() {
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const profileAvatarInputRef = useRef<HTMLInputElement | null>(null);
+  const mobileEmptyStatePromptShownRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -186,6 +187,37 @@ export default function App() {
     };
   }, []);
 
+
+  useEffect(() => {
+    mobileEmptyStatePromptShownRef.current = false;
+  }, [authRefreshKey]);
+
+  useEffect(() => {
+    if (
+      isDesktop ||
+      !isAuthenticated ||
+      loadingChats ||
+      mobileEmptyStatePromptShownRef.current ||
+      myProfilePageOpen ||
+      profileOpen
+    ) {
+      return;
+    }
+
+    if (currentProfile && chats.length === 0 && !activeChatId) {
+      setMobileSidebarOpen(true);
+      mobileEmptyStatePromptShownRef.current = true;
+    }
+  }, [
+    activeChatId,
+    chats.length,
+    currentProfile,
+    isAuthenticated,
+    isDesktop,
+    loadingChats,
+    myProfilePageOpen,
+    profileOpen,
+  ]);
   useEffect(() => {
     if (!isAuthenticated) {
       setLoadingChats(false);
@@ -825,12 +857,34 @@ export default function App() {
                     Найди пользователя по username в левой колонке и нажми на него — чат создастся сразу в базе.
                   </p>
 
+                  {!isDesktop && (
+                    <div className="mt-6 flex w-full flex-col gap-3 sm:flex-row">
+                      <button
+                        type="button"
+                        onClick={() => setMobileSidebarOpen(true)}
+                        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(15,23,42,0.14)] transition hover:bg-slate-800"
+                      >
+                        <Search className="h-4 w-4" />
+                        Люди и чаты
+                      </button>
+                      <button
+                        type="button"
+                        onClick={openMyProfile}
+                        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                      >
+                        <UserRound className="h-4 w-4" />
+                        Мой профиль
+                      </button>
+                    </div>
+                  )}
+
                   <div className="mt-6 w-full rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4 text-left">
                     <div className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-700">
                       <Search className="h-4 w-4 text-orange-500" />
                       Что делать дальше
                     </div>
                     <div className="space-y-2 text-sm text-slate-600">
+                      {!isDesktop && <div>0. Нажми «Люди и чаты», чтобы открыть левую колонку</div>}
                       <div>1. Зарегистрируй второй аккаунт с другим email</div>
                       <div>2. Войди под одним аккаунтом</div>
                       <div>3. Слева введи @username второго пользователя</div>
