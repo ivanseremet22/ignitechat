@@ -15,3 +15,4 @@ npm run dev
    - `VITE_SUPABASE_ANON_KEY`
 
 Если env пустые, приложение автоматически работает в mock-режиме.
+<!-- rebuild -->
