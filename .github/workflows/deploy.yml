@@ -44,3 +44,4 @@ jobs:
       - name: Upload dist
         run: |
           scp -i ~/.ssh/id_ed25519 -P ${{ secrets.SERVER_PORT }} -r dist/* ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/var/www/html/
+<!-- redeploy -->
