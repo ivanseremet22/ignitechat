@@ -88,6 +88,11 @@ function isMissingSchemaError(message: string): boolean {
   );
 }
 
+function isUuid(value: string | null | undefined): value is string {
+  if (!value) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 function normalizeProfileRow(row: ProfileRow, authUser?: User | null): UserProfile {
   const email = getNullableString(row.email) ?? authUser?.email ?? null;
 
@@ -200,6 +205,30 @@ async function fetchProfileRows(
   return (result.data ?? []) as ProfileRow[];
 }
 
+function createClientSideUuid() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+
+  const fallback = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx";
+  return fallback.replace(/[xy]/g, (char) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = char === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
 export async function fetchCurrentProfile(client: SupabaseClient): Promise<UserProfile> {
   const user = await getAuthenticatedUser(client);
   const rows = await fetchProfileRows(client, { userId: user.id });
@@ -222,7 +251,7 @@ export async function fetchCurrentProfile(client: SupabaseClient): Promise<UserP
 export async function fetchUsers(client: SupabaseClient, currentUserId: string): Promise<UserProfile[]> {
   try {
     const rows = await fetchProfileRows(client, { excludeUserId: currentUserId });
-    return rows.map((row) => normalizeProfileRow(row));
+    return rows.filter((row) => isUuid(row.id)).map((row) => normalizeProfileRow(row));
   } catch (error) {
     console.error("fetchUsers error:", error);
     return [];
@@ -243,7 +272,7 @@ export async function fetchChats(client: SupabaseClient, currentUserId: string):
     throw new Error(participantResult.error.message || "Не удалось загрузить чаты.");
   }
 
-  const myParticipants = (participantResult.data ?? []) as ConversationParticipantRow[];
+  const myParticipants = ((participantResult.data ?? []) as ConversationParticipantRow[]).filter((row) => isUuid(row.conversation_id));
   const conversationIds = myParticipants.map((row) => row.conversation_id);
 
   if (conversationIds.length === 0) {
@@ -278,7 +307,7 @@ export async function fetchChats(client: SupabaseClient, currentUserId: string):
   }
 
   const conversations = (conversationsResult.data ?? []) as ConversationRow[];
-  const allParticipants = (participantsResult.data ?? []) as ConversationParticipantRow[];
+  const allParticipants = ((participantsResult.data ?? []) as ConversationParticipantRow[]).filter((row) => isUuid(row.conversation_id) && isUuid(row.user_id));
 
   const otherUserIds = Array.from(
     new Set(
@@ -325,6 +354,10 @@ export async function fetchChats(client: SupabaseClient, currentUserId: string):
 }
 
 export async function fetchMessages(client: SupabaseClient, conversationId: string): Promise<Message[]> {
+  if (!isUuid(conversationId)) {
+    throw new Error("Некорректный ID чата.");
+  }
+
   const messagesResult = await client
     .from("messages")
     .select("id,conversation_id,sender_id,text,created_at,reply_to,voice_duration,voice_url")
@@ -367,6 +400,10 @@ export async function createOrGetDirectConversation(
   currentUserId: string,
   otherUserId: string,
 ): Promise<string> {
+  if (!isUuid(currentUserId) || !isUuid(otherUserId)) {
+    throw new Error("Некорректный ID пользователя. Один из профилей создан со старым не-uuid id.");
+  }
+
   const mineResult = await client
     .from("conversation_participants")
     .select("conversation_id,user_id")
@@ -376,7 +413,7 @@ export async function createOrGetDirectConversation(
     throw new Error(mineResult.error.message || "Не удалось найти чаты.");
   }
 
-  const myRows = (mineResult.data ?? []) as ConversationParticipantRow[];
+  const myRows = ((mineResult.data ?? []) as ConversationParticipantRow[]).filter((row) => isUuid(row.conversation_id));
   const conversationIds = myRows.map((row) => row.conversation_id);
 
   if (conversationIds.length > 0) {
@@ -389,7 +426,7 @@ export async function createOrGetDirectConversation(
       throw new Error(participantsResult.error.message || "Не удалось проверить участников.");
     }
 
-    const participants = (participantsResult.data ?? []) as ConversationParticipantRow[];
+    const participants = ((participantsResult.data ?? []) as ConversationParticipantRow[]).filter((row) => isUuid(row.conversation_id) && isUuid(row.user_id));
     const participantMap = new Map<string, string[]>();
 
     for (const row of participants) {
@@ -411,10 +448,7 @@ export async function createOrGetDirectConversation(
     }
   }
 
-  const conversationId =
-    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const conversationId = createClientSideUuid();
 
   const conversationInsert = await client.from("conversations").insert({
     id: conversationId,
@@ -456,6 +490,10 @@ export async function sendMessageToConversation(
     voice?: number;
   },
 ): Promise<void> {
+  if (!isUuid(input.conversationId) || !isUuid(input.senderId) || (input.replyTo && !isUuid(input.replyTo))) {
+    throw new Error("Некорректный uuid в сообщении.");
+  }
+
   const preview = input.voice
     ? "🎤 Голосовое сообщение"
     : input.text.trim() || "Сообщение";

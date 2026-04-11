@@ -15,6 +15,7 @@ import {
   restoreAuthProfile,
   signOutApp,
   submitAuth,
+  supabaseConfigError,
   syncProfileToSupabase,
 } from "./lib/auth";
 import {
@@ -225,7 +226,7 @@ export default function App() {
     }
 
     if (!authClient) {
-      setError("Supabase не настроен. Для реальных чатов нужен .env с ключами.");
+      setError(supabaseConfigError || "Supabase не настроен. Проверь env переменные.");
       setLoadingChats(false);
       return;
     }

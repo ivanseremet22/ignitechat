@@ -6,16 +6,31 @@ export type AuthSubmitMode = "register" | "login";
 
 const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
 
-const SUPABASE_URL =
-  env?.VITE_SUPABASE_URL?.trim() || "https://ygjooznsqgnlhfbwwtsq.supabase.co";
-const SUPABASE_ANON_KEY =
-  env?.VITE_SUPABASE_ANON_KEY?.trim() || "sb_publishable_9ySILz0thBKX8mP65CrmbA_CTIU8JKq";
+const SUPABASE_URL = env?.VITE_SUPABASE_URL?.trim() ?? "";
+const SUPABASE_ANON_KEY = env?.VITE_SUPABASE_ANON_KEY?.trim() ?? "";
 
 const AUTH_STORAGE_KEY = "ignite.auth";
 const PROFILE_STORAGE_KEY = "ignite.profile";
 
+function isValidSupabaseUrl(value: string) {
+  return /^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(value);
+}
+
+function isLikelySupabaseKey(value: string) {
+  return value.startsWith("sb_publishable_") || value.startsWith("eyJ");
+}
+
+export const supabaseConfigError =
+  !SUPABASE_URL || !SUPABASE_ANON_KEY
+    ? "Не заданы VITE_SUPABASE_URL и/или VITE_SUPABASE_ANON_KEY."
+    : !isValidSupabaseUrl(SUPABASE_URL)
+      ? "VITE_SUPABASE_URL имеет неверный формат."
+      : !isLikelySupabaseKey(SUPABASE_ANON_KEY)
+        ? "VITE_SUPABASE_ANON_KEY имеет неверный формат."
+        : null;
+
 export const authClient =
-  SUPABASE_URL && SUPABASE_ANON_KEY
+  supabaseConfigError === null
     ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         auth: {
           persistSession: true,
@@ -68,6 +83,29 @@ function normalizeProfile(payload: Partial<EditableAuthProfile>): EditableAuthPr
   };
 }
 
+function normalizeAuthError(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error || "");
+
+  if (message.toLowerCase().includes("failed to fetch")) {
+    return new Error(
+      "Не удалось подключиться к Supabase. Проверь VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY и то, что сайт открыт по HTTPS.",
+    );
+  }
+
+  return error instanceof Error ? error : new Error("Не удалось выполнить авторизацию.");
+}
+
+function requireAuthClient() {
+  if (!authClient) {
+    throw new Error(
+      supabaseConfigError ||
+        "Supabase не настроен. Проверь VITE_SUPABASE_URL и VITE_SUPABASE_ANON_KEY.",
+    );
+  }
+
+  return authClient;
+}
+
 export function getInitials(name: string) {
   const tokens = name
     .trim()
@@ -95,7 +133,7 @@ export function readStoredProfile(): EditableAuthProfile | null {
 }
 
 async function upsertProfile(user: User, profile: EditableAuthProfile) {
-  if (!authClient) return;
+  const client = requireAuthClient();
 
   const username =
     profile.username ||
@@ -113,7 +151,7 @@ async function upsertProfile(user: User, profile: EditableAuthProfile) {
   const status = profile.statusText || "";
   const avatarUrl = profile.avatarDataUrl || "";
 
-  const { error } = await authClient.from("profiles").upsert(
+  const { error } = await client.from("profiles").upsert(
     {
       id: user.id,
       username,
@@ -134,9 +172,9 @@ async function upsertProfile(user: User, profile: EditableAuthProfile) {
 }
 
 async function fetchProfileByUserId(userId: string) {
-  if (!authClient) return null;
+  const client = requireAuthClient();
 
-  const { data, error } = await authClient
+  const { data, error } = await client
     .from("profiles")
     .select("*")
     .eq("id", userId)
@@ -153,18 +191,22 @@ export async function syncProfileToSupabase(profile: EditableAuthProfile) {
   const normalized = normalizeProfile(profile);
   safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(normalized));
 
-  if (!authClient) return normalized;
+  const client = requireAuthClient();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await authClient.auth.getUser();
+  try {
+    const {
+      data: { user },
+      error: userError,
+    } = await client.auth.getUser();
 
-  if (userError) throw userError;
-  if (!user) return normalized;
+    if (userError) throw userError;
+    if (!user) return normalized;
 
-  await upsertProfile(user, normalized);
-  return normalized;
+    await upsertProfile(user, normalized);
+    return normalized;
+  } catch (error) {
+    throw normalizeAuthError(error);
+  }
 }
 
 export async function submitAuth(payload: RegisterPayload, mode: AuthSubmitMode) {
@@ -180,66 +222,66 @@ export async function submitAuth(payload: RegisterPayload, mode: AuthSubmitMode)
     avatarDataUrl: payload.avatarDataUrl,
   });
 
-  if (!authClient) {
-    safeStorageSet(AUTH_STORAGE_KEY, "1");
-    safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(profile));
-    return profile;
-  }
+  const client = requireAuthClient();
 
-  if (mode === "register") {
-    const { data, error } = await authClient.auth.signUp({
+  try {
+    if (mode === "register") {
+      const { data, error } = await client.auth.signUp({
+        email: profile.email,
+        password: profile.password,
+        options: {
+          data: {
+            name: profile.name,
+            username: profile.username,
+            bio: profile.bio,
+            phone: profile.phone,
+            location: profile.location,
+            statusText: profile.statusText,
+            avatarDataUrl: profile.avatarDataUrl,
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      const user = data.user;
+      if (!user) {
+        throw new Error("Не удалось создать пользователя.");
+      }
+
+      await upsertProfile(user, profile);
+      safeStorageSet(AUTH_STORAGE_KEY, "1");
+      safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+      return profile;
+    }
+
+    const { data, error } = await client.auth.signInWithPassword({
       email: profile.email,
       password: profile.password,
-      options: {
-        data: {
-          name: profile.name,
-          username: profile.username,
-          bio: profile.bio,
-          phone: profile.phone,
-          location: profile.location,
-          statusText: profile.statusText,
-          avatarDataUrl: profile.avatarDataUrl,
-        },
-      },
     });
 
     if (error) throw error;
+    if (!data.user) throw new Error("Не удалось выполнить вход.");
 
-    const user = data.user;
-    if (!user) {
-      throw new Error("Не удалось создать пользователя.");
-    }
+    const existingProfile = await fetchProfileByUserId(data.user.id);
 
-    await upsertProfile(user, profile);
+    const mergedProfile = normalizeProfile({
+      ...profile,
+      name: existingProfile?.name || profile.name,
+      username: existingProfile?.username || profile.username,
+      bio: existingProfile?.bio || profile.bio,
+      phone: existingProfile?.phone || profile.phone,
+      location: existingProfile?.location || profile.location,
+      statusText: existingProfile?.status || profile.statusText,
+      avatarDataUrl: existingProfile?.avatar_url || profile.avatarDataUrl,
+    });
+
     safeStorageSet(AUTH_STORAGE_KEY, "1");
-    safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(profile));
-    return profile;
+    safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(mergedProfile));
+    return mergedProfile;
+  } catch (error) {
+    throw normalizeAuthError(error);
   }
-
-  const { data, error } = await authClient.auth.signInWithPassword({
-    email: profile.email,
-    password: profile.password,
-  });
-
-  if (error) throw error;
-  if (!data.user) throw new Error("Не удалось выполнить вход.");
-
-  const existingProfile = await fetchProfileByUserId(data.user.id);
-
-  const mergedProfile = normalizeProfile({
-    ...profile,
-    name: existingProfile?.name || profile.name,
-    username: existingProfile?.username || profile.username,
-    bio: existingProfile?.bio || profile.bio,
-    phone: existingProfile?.phone || profile.phone,
-    location: existingProfile?.location || profile.location,
-    statusText: existingProfile?.status || profile.statusText,
-    avatarDataUrl: existingProfile?.avatar_url || profile.avatarDataUrl,
-  });
-
-  safeStorageSet(AUTH_STORAGE_KEY, "1");
-  safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(mergedProfile));
-  return mergedProfile;
 }
 
 export async function signOutApp() {
@@ -255,70 +297,74 @@ export async function restoreAuthProfile() {
 
   if (!authClient) {
     return {
-      isAuthenticated: readStoredAuthFlag(),
-      profile: fallbackProfile,
-    };
-  }
-
-  const {
-    data: { session },
-  } = await authClient.auth.getSession();
-
-  if (!session?.user) {
-    safeStorageRemove(AUTH_STORAGE_KEY);
-    return {
       isAuthenticated: false,
       profile: fallbackProfile,
     };
   }
 
-  const dbProfile = await fetchProfileByUserId(session.user.id);
+  try {
+    const {
+      data: { session },
+    } = await authClient.auth.getSession();
 
-  const restored = normalizeProfile({
-    name:
-      dbProfile?.name ||
-      session.user.user_metadata?.name ||
-      fallbackProfile?.name ||
-      "",
-    username:
-      dbProfile?.username ||
-      session.user.user_metadata?.username ||
-      fallbackProfile?.username ||
-      "",
-    bio:
-      dbProfile?.bio ||
-      session.user.user_metadata?.bio ||
-      fallbackProfile?.bio ||
-      "",
-    email: session.user.email || fallbackProfile?.email || "",
-    password: fallbackProfile?.password || "",
-    phone:
-      dbProfile?.phone ||
-      session.user.user_metadata?.phone ||
-      fallbackProfile?.phone ||
-      "",
-    location:
-      dbProfile?.location ||
-      session.user.user_metadata?.location ||
-      fallbackProfile?.location ||
-      "",
-    statusText:
-      dbProfile?.status ||
-      session.user.user_metadata?.statusText ||
-      fallbackProfile?.statusText ||
-      "",
-    avatarDataUrl:
-      dbProfile?.avatar_url ||
-      session.user.user_metadata?.avatarDataUrl ||
-      fallbackProfile?.avatarDataUrl ||
-      "",
-  });
+    if (!session?.user) {
+      safeStorageRemove(AUTH_STORAGE_KEY);
+      return {
+        isAuthenticated: false,
+        profile: fallbackProfile,
+      };
+    }
 
-  safeStorageSet(AUTH_STORAGE_KEY, "1");
-  safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(restored));
+    const dbProfile = await fetchProfileByUserId(session.user.id);
 
-  return {
-    isAuthenticated: true,
-    profile: restored,
-  };
+    const restored = normalizeProfile({
+      name:
+        dbProfile?.name ||
+        session.user.user_metadata?.name ||
+        fallbackProfile?.name ||
+        "",
+      username:
+        dbProfile?.username ||
+        session.user.user_metadata?.username ||
+        fallbackProfile?.username ||
+        "",
+      bio:
+        dbProfile?.bio ||
+        session.user.user_metadata?.bio ||
+        fallbackProfile?.bio ||
+        "",
+      email: session.user.email || fallbackProfile?.email || "",
+      password: fallbackProfile?.password || "",
+      phone:
+        dbProfile?.phone ||
+        session.user.user_metadata?.phone ||
+        fallbackProfile?.phone ||
+        "",
+      location:
+        dbProfile?.location ||
+        session.user.user_metadata?.location ||
+        fallbackProfile?.location ||
+        "",
+      statusText:
+        dbProfile?.status ||
+        session.user.user_metadata?.statusText ||
+        fallbackProfile?.statusText ||
+        "",
+      avatarDataUrl:
+        dbProfile?.avatar_url ||
+        session.user.user_metadata?.avatarDataUrl ||
+        fallbackProfile?.avatarDataUrl ||
+        "",
+    });
+
+    safeStorageSet(AUTH_STORAGE_KEY, "1");
+    safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(restored));
+
+    return {
+      isAuthenticated: true,
+      profile: restored,
+    };
+  } catch (error) {
+    throw normalizeAuthError(error);
+  }
 }
