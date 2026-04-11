@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { MessageCircle, MessageSquarePlus, Search, UserRound, Video } from "lucide-react";
+import { MessageSquarePlus, Search, UserRound, Video } from "lucide-react";
 import AuthPage, { type AuthMode, type RegisterPayload, getInitials } from "./AuthPage";
 import type { Chat, EditableAuthProfile, Message, Reaction, UserProfile } from "./chat-types";
 import Sidebar from "./components/chat/Sidebar";
@@ -82,7 +82,10 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [activeChatId, setActiveChatId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem("ignite.activeChatId");
+  });
   const [search, setSearch] = useState("");
   const [sendPulse, setSendPulse] = useState(false);
   const [replyTo, setReplyTo] = useState<string | null>(null);
@@ -117,6 +120,16 @@ export default function App() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const profileAvatarInputRef = useRef<HTMLInputElement | null>(null);
   const mobileEmptyStatePromptShownRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (activeChatId) {
+      window.localStorage.setItem("ignite.activeChatId", activeChatId);
+    } else {
+      window.localStorage.removeItem("ignite.activeChatId");
+    }
+  }, [activeChatId]);
+
 
   useEffect(() => {
     let active = true;
@@ -551,11 +564,46 @@ export default function App() {
 
   async function startChatWithUser(userId: string) {
     if (!authClient || !currentProfile) return;
+
+    const targetUser = users.find((user) => user.id === userId);
+    const matchesTargetChat = (chat: Chat) =>
+      chat.peerId === userId ||
+      (targetUser
+        ? [targetUser.id, targetUser.name, targetUser.username]
+            .filter(Boolean)
+            .some((value) => chat.title === value)
+        : false);
+
+    const openExistingChat = (chat: Chat) => {
+      setError(null);
+      setActiveChatId(chat.id);
+      setSearch("");
+      setReplyTo(null);
+      if (!isDesktop) {
+        setMobileSidebarOpen(false);
+      }
+    };
+
+    const existingChat = chats.find(matchesTargetChat);
+    if (existingChat) {
+      openExistingChat(existingChat);
+      return;
+    }
+
     const client = authClient;
     setCreatingChat(userId);
     setError(null);
 
     try {
+      const latestChats = await fetchChats(client, currentProfile.id);
+      setChats(latestChats);
+
+      const refreshedExistingChat = latestChats.find(matchesTargetChat);
+      if (refreshedExistingChat) {
+        openExistingChat(refreshedExistingChat);
+        return;
+      }
+
       const chatId = await createOrGetDirectConversation(client, currentProfile.id, userId);
       await refreshChats(chatId);
       setActiveChatId(chatId);
@@ -593,6 +641,7 @@ export default function App() {
   }
 
   function selectChat(chatId: string) {
+    setError(null);
     setActiveChatId(chatId);
     setReplyTo(null);
     if (!isDesktop) {
@@ -765,7 +814,7 @@ export default function App() {
           formatTime={formatTime}
         />
 
-        <main className="chat-main-shell relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,#fbfcfe_0%,#f8fafc_38%,#f6f8fb_100%)] pb-[calc(84px+env(safe-area-inset-bottom))] md:pb-0">
+        <main className="chat-main-shell relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,#fbfcfe_0%,#f8fafc_38%,#f6f8fb_100%)]">
           <div className="pointer-events-none absolute inset-0 opacity-90">
             <div className="absolute -right-24 top-0 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(251,191,36,0.16),transparent_68%)]" />
             <div className="absolute left-10 top-24 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(59,130,246,0.08),transparent_70%)]" />
@@ -914,61 +963,6 @@ export default function App() {
             formatMessageMeta={formatMessageMeta}
           />
         )}
-
-        {isAuthenticated && !isDesktop && (
-          <div
-            className="pointer-events-none fixed inset-x-0 bottom-0 z-50 px-3 pb-[calc(12px+env(safe-area-inset-bottom))]"
-          >
-            <div className="pointer-events-auto mx-auto grid max-w-md grid-cols-3 gap-2 rounded-[28px] border border-white/70 bg-white/92 p-2 shadow-[0_-8px_30px_rgba(15,23,42,0.10)] backdrop-blur-xl">
-              <button
-                type="button"
-                onClick={() => {
-                  setMyProfilePageOpen(false);
-                  setProfileOpen(false);
-                  setMobileSidebarOpen(true);
-                }}
-                className={
-                  "flex flex-col items-center justify-center gap-1 rounded-[20px] px-3 py-2.5 text-[11px] font-semibold transition " +
-                  (mobileSidebarOpen && !myProfilePageOpen
-                    ? "bg-amber-50 text-amber-700"
-                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900")
-                }
-              >
-                <MessageCircle className="h-5 w-5" />
-                <span>Чаты</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setMyProfilePageOpen(false);
-                  setProfileOpen(false);
-                  setSearch("");
-                  setMobileSidebarOpen(true);
-                }}
-                className="flex flex-col items-center justify-center gap-1 rounded-[20px] bg-slate-950 px-3 py-2.5 text-[11px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.16)] transition hover:bg-slate-800"
-              >
-                <MessageSquarePlus className="h-5 w-5" />
-                <span>Новый чат</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={openMyProfile}
-                className={
-                  "flex flex-col items-center justify-center gap-1 rounded-[20px] px-3 py-2.5 text-[11px] font-semibold transition " +
-                  (myProfilePageOpen
-                    ? "bg-amber-50 text-amber-700"
-                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900")
-                }
-              >
-                <UserRound className="h-5 w-5" />
-                <span>Профиль</span>
-              </button>
-            </div>
-          </div>
-        )}
-
       </div>
     </div>
   );

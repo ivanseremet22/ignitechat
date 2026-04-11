@@ -28,6 +28,7 @@ export type UserProfile = User & {
   accent: string;
   interests: string[];
   avatarUrl?: string;
+  lastSeen?: string;
 };
 
 export type Reaction = {

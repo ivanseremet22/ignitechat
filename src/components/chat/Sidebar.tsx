@@ -44,6 +44,11 @@ export default function Sidebar({
   formatTime,
 }: SidebarProps) {
   const hasSearch = search.trim().length > 0;
+  const newChatSuggestions = hasSearch
+    ? searchResults.filter((profile) => profile.status !== "Чат уже есть")
+    : [];
+
+  const hasVisibleContent = filteredChats.length > 0 || newChatSuggestions.length > 0;
 
   return (
     <motion.aside
@@ -129,85 +134,94 @@ export default function Sidebar({
       <div className="relative flex-1 overflow-y-auto px-3 py-3 pr-4">
         <div className="pointer-events-none absolute inset-x-3 top-0 h-10 rounded-t-[24px] bg-gradient-to-b from-slate-100/55 to-transparent" />
 
-        {hasSearch && searchResults.length > 0 && (
-          <div className="mb-5">
-            <div className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
-              Люди
-            </div>
-            <div className="space-y-1">
-              {searchResults.map((profile) => (
-                <button
-                  key={profile.id}
-                  type="button"
-                  onClick={() => void onStartChat(profile.id)}
-                  className="flex w-full items-center gap-3 rounded-[18px] border border-slate-200/70 bg-white/90 px-3 py-3 text-left transition hover:bg-slate-50"
-                >
-                  <AppAvatar
-                    className="h-11 w-11 shrink-0"
-                    initials={profile.avatar}
-                    imageUrl={profile.avatarUrl}
-                    accent={profile.accent}
-                    fallbackClassName="text-slate-900"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-slate-900">{profile.name}</div>
-                    <div className="truncate text-xs text-slate-500">@{profile.username}</div>
-                  </div>
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600">
-                    <MessageSquarePlus className="h-4 w-4" />
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        <div className="mb-3 px-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+          {hasSearch ? "Результаты" : "Диалоги"}
+        </div>
 
         <div className="space-y-1">
           {loadingChats ? (
             <div className="rounded-2xl bg-white px-4 py-5 text-sm text-slate-500 ring-1 ring-slate-200/80">
               Загрузка чатов...
             </div>
-          ) : filteredChats.length === 0 ? (
+          ) : !hasVisibleContent ? (
             <div className="rounded-2xl bg-white px-4 py-5 text-sm text-slate-500 ring-1 ring-slate-200/80">
               {hasSearch
-                ? "Чатов по запросу нет. Найди человека выше и начни диалог."
+                ? "Ничего не найдено. Попробуй другой username."
                 : "Чатов пока нет. Найди пользователя по username и создай первый диалог."}
             </div>
           ) : (
-            filteredChats.map((chat) => {
-              const active = chat.id === activeChatId;
-              return (
-                <button
-                  key={chat.id}
-                  onClick={() => onSelectChat(chat.id)}
-                  className={
-                    "group relative flex w-full items-center gap-3 overflow-hidden rounded-[18px] px-3 py-2.5 text-left box-border transition duration-200 hover:bg-slate-100/85 " +
-                    (active
-                      ? "bg-[linear-gradient(135deg,rgba(255,247,237,0.98),rgba(255,251,235,0.92))] ring-1 ring-amber-200/70 shadow-[0_10px_24px_rgba(251,146,60,0.10)]"
-                      : "bg-transparent")
-                  }
-                >
-                  {active && <span className="absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-amber-300/80 to-transparent" />}
-                  <div className="z-[1] flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-300 text-sm font-semibold text-slate-900">
-                    {chat.avatar}
-                  </div>
-                  <div className="min-w-0 flex-1 overflow-hidden">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="truncate text-[15px] font-medium">{chat.title}</div>
-                      <div className="shrink-0 text-[11px] text-slate-400">{formatTime(chat.updatedAt)}</div>
+            <>
+              {filteredChats.map((chat) => {
+                const active = chat.id === activeChatId;
+                return (
+                  <button
+                    key={chat.id}
+                    onClick={() => onSelectChat(chat.id)}
+                    className={
+                      "group relative flex w-full items-center gap-3 overflow-hidden rounded-[18px] px-3 py-2.5 text-left box-border transition duration-200 hover:bg-slate-100/85 " +
+                      (active
+                        ? "bg-[linear-gradient(135deg,rgba(255,247,237,0.98),rgba(255,251,235,0.92))] ring-1 ring-amber-200/70 shadow-[0_10px_24px_rgba(251,146,60,0.10)]"
+                        : "bg-transparent")
+                    }
+                  >
+                    {active && (
+                      <span className="absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-amber-300/80 to-transparent" />
+                    )}
+                    <div className="z-[1] flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-300 text-sm font-semibold text-slate-900">
+                      {chat.avatar}
                     </div>
-                    <div className="mt-1 flex items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1 truncate text-[13px] text-slate-500">{chat.preview}</div>
-                      {!!chat.unread && chat.unread > 0 && (
-                        <div className="shrink-0 rounded-full bg-gradient-to-r from-amber-400 to-orange-300 px-2 py-[2px] text-[10px] font-semibold text-slate-900 shadow">
-                          {chat.unread}
-                        </div>
-                      )}
+                    <div className="min-w-0 flex-1 overflow-hidden">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="truncate text-[15px] font-medium">{chat.title}</div>
+                        <div className="shrink-0 text-[11px] text-slate-400">{formatTime(chat.updatedAt)}</div>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1 truncate text-[13px] text-slate-500">{chat.preview}</div>
+                        {!!chat.unread && chat.unread > 0 && (
+                          <div className="shrink-0 rounded-full bg-gradient-to-r from-amber-400 to-orange-300 px-2 py-[2px] text-[10px] font-semibold text-slate-900 shadow">
+                            {chat.unread}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </button>
-              );
-            })
+                  </button>
+                );
+              })}
+
+              {newChatSuggestions.length > 0 && (
+                <>
+                  {filteredChats.length > 0 && (
+                    <div className="px-2 pt-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+                      Новый чат
+                    </div>
+                  )}
+
+                  {newChatSuggestions.map((profile) => (
+                    <button
+                      key={profile.id}
+                      type="button"
+                      onClick={() => void onStartChat(profile.id)}
+                      className="flex w-full items-center gap-3 rounded-[18px] border border-dashed border-amber-200/90 bg-white/90 px-3 py-3 text-left transition hover:bg-amber-50/50"
+                    >
+                      <AppAvatar
+                        className="h-11 w-11 shrink-0"
+                        initials={profile.avatar}
+                        imageUrl={profile.avatarUrl}
+                        accent={profile.accent}
+                        fallbackClassName="text-slate-900"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-semibold text-slate-900">{profile.name}</div>
+                        <div className="truncate text-xs text-slate-500">@{profile.username}</div>
+                      </div>
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+                        <MessageSquarePlus className="h-4 w-4" />
+                      </div>
+                    </button>
+                  ))}
+                </>
+              )}
+            </>
           )}
         </div>
       </div>
