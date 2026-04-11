@@ -254,7 +254,7 @@ export default function App() {
         }
 
         if (!nextCurrentProfile) {
-          throw new Error("Не удалось собрать currentProfile.");
+          throw new Error("Не удалось подготовить профиль пользователя.");
         }
 
         const [nextUsers, nextChats] = await Promise.all([
