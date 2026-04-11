@@ -82,10 +82,7 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
-  const [activeChatId, setActiveChatId] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return window.localStorage.getItem("ignite.activeChatId");
-  });
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [sendPulse, setSendPulse] = useState(false);
   const [replyTo, setReplyTo] = useState<string | null>(null);
@@ -120,16 +117,6 @@ export default function App() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const profileAvatarInputRef = useRef<HTMLInputElement | null>(null);
   const mobileEmptyStatePromptShownRef = useRef(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (activeChatId) {
-      window.localStorage.setItem("ignite.activeChatId", activeChatId);
-    } else {
-      window.localStorage.removeItem("ignite.activeChatId");
-    }
-  }, [activeChatId]);
-
 
   useEffect(() => {
     let active = true;
@@ -564,46 +551,11 @@ export default function App() {
 
   async function startChatWithUser(userId: string) {
     if (!authClient || !currentProfile) return;
-
-    const targetUser = users.find((user) => user.id === userId);
-    const matchesTargetChat = (chat: Chat) =>
-      chat.peerId === userId ||
-      (targetUser
-        ? [targetUser.id, targetUser.name, targetUser.username]
-            .filter(Boolean)
-            .some((value) => chat.title === value)
-        : false);
-
-    const openExistingChat = (chat: Chat) => {
-      setError(null);
-      setActiveChatId(chat.id);
-      setSearch("");
-      setReplyTo(null);
-      if (!isDesktop) {
-        setMobileSidebarOpen(false);
-      }
-    };
-
-    const existingChat = chats.find(matchesTargetChat);
-    if (existingChat) {
-      openExistingChat(existingChat);
-      return;
-    }
-
     const client = authClient;
     setCreatingChat(userId);
     setError(null);
 
     try {
-      const latestChats = await fetchChats(client, currentProfile.id);
-      setChats(latestChats);
-
-      const refreshedExistingChat = latestChats.find(matchesTargetChat);
-      if (refreshedExistingChat) {
-        openExistingChat(refreshedExistingChat);
-        return;
-      }
-
       const chatId = await createOrGetDirectConversation(client, currentProfile.id, userId);
       await refreshChats(chatId);
       setActiveChatId(chatId);
@@ -641,7 +593,6 @@ export default function App() {
   }
 
   function selectChat(chatId: string) {
-    setError(null);
     setActiveChatId(chatId);
     setReplyTo(null);
     if (!isDesktop) {
@@ -814,7 +765,7 @@ export default function App() {
           formatTime={formatTime}
         />
 
-        <main className="chat-main-shell relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,#fbfcfe_0%,#f8fafc_38%,#f6f8fb_100%)]">
+        <main className="chat-main-shell relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,#fbfcfe_0%,#f8fafc_38%,#f6f8fb_100%)] pb-[calc(68px+env(safe-area-inset-bottom))] md:pb-0">
           <div className="pointer-events-none absolute inset-0 opacity-90">
             <div className="absolute -right-24 top-0 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(251,191,36,0.16),transparent_68%)]" />
             <div className="absolute left-10 top-24 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(59,130,246,0.08),transparent_70%)]" />
@@ -914,7 +865,7 @@ export default function App() {
                         className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(15,23,42,0.14)] transition hover:bg-slate-800"
                       >
                         <Search className="h-4 w-4" />
-                        Люди и чаты
+                        Чаты
                       </button>
                       <button
                         type="button"
@@ -933,7 +884,7 @@ export default function App() {
                       Что делать дальше
                     </div>
                     <div className="space-y-2 text-sm text-slate-600">
-                      {!isDesktop && <div>0. Нажми «Люди и чаты», чтобы открыть левую колонку</div>}
+                      {!isDesktop && <div>0. Нажми «Чаты», чтобы открыть левую колонку</div>}
                       <div>1. Зарегистрируй второй аккаунт с другим email</div>
                       <div>2. Войди под одним аккаунтом</div>
                       <div>3. Слева введи @username второго пользователя</div>
@@ -950,6 +901,44 @@ export default function App() {
               </div>
             </section>
           )}
+          {!myProfilePageOpen && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pb-[calc(10px+env(safe-area-inset-bottom))] md:hidden">
+              <div className="pointer-events-auto mx-auto grid max-w-md grid-cols-3 gap-1.5 rounded-[26px] border border-white/35 bg-white/35 p-1.5 shadow-[0_-6px_24px_rgba(15,23,42,0.06)] backdrop-blur-md">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    setMobileSidebarOpen(true);
+                  }}
+                  className="flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-[18px] text-slate-700/90 transition hover:bg-white/30"
+                >
+                  <Search className="h-5 w-5" />
+                  <span className="text-[11px] font-medium tracking-[0.01em]">Чаты</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    setSearch("");
+                    setMobileSidebarOpen(true);
+                  }}
+                  className="flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-[18px] bg-slate-950/78 text-white shadow-[0_10px_20px_rgba(15,23,42,0.10)] ring-1 ring-white/20 transition hover:bg-slate-950/86"
+                >
+                  <MessageSquarePlus className="h-5 w-5" />
+                  <span className="text-[11px] font-medium tracking-[0.01em]">Новый чат</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={openMyProfile}
+                  className="flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-[18px] text-slate-700/90 transition hover:bg-white/30"
+                >
+                  <UserRound className="h-5 w-5" />
+                  <span className="text-[11px] font-medium tracking-[0.01em]">Профиль</span>
+                </button>
+              </div>
+            </div>
+          )}
+
         </main>
 
         {panelProfile && (

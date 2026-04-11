@@ -1,5 +1,5 @@
 import type { RealtimeChannel, SupabaseClient, User } from "@supabase/supabase-js";
-import type { Chat, Message, Reaction, UserProfile } from "../chat-types";
+import type { Chat, Message, Reaction, UserProfile } from "../../chat-types";
 
 type ProfileRow = Record<string, unknown> & {
   id: string;
