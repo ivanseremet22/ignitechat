@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { MessageSquarePlus, Search, UserRound, Video } from "lucide-react";
 import AuthPage, { type AuthMode, type RegisterPayload, getInitials } from "./AuthPage";
@@ -70,6 +71,20 @@ function findMessageById(messages: Message[], id?: string) {
 }
 
 export default function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const normalizedPathname = useMemo(() => {
+    const trimmed = location.pathname.replace(/\/+$/, "");
+    return trimmed || "/";
+  }, [location.pathname]);
+  const routeChatId = useMemo(() => {
+    const match = normalizedPathname.match(/^\/chat\/([^/]+)$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }, [normalizedPathname]);
+  const isAuthRoute = normalizedPathname === "/auth";
+  const isProfileRoute = normalizedPathname === "/profile";
+  const isChatRoute = normalizedPathname === "/chat" || Boolean(routeChatId);
+
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => readStoredAuthFlag());
   const [authProfile, setAuthProfile] = useState<EditableAuthProfile | null>(
     () => (readStoredProfile() as EditableAuthProfile | null),
@@ -562,6 +577,7 @@ export default function App() {
       setActiveChatId(chatId);
       setSearch("");
       setReplyTo(null);
+      navigate(`/chat/${chatId}`);
       if (!isDesktop) {
         setMobileSidebarOpen(false);
       }
@@ -596,6 +612,7 @@ export default function App() {
   function selectChat(chatId: string) {
     setActiveChatId(chatId);
     setReplyTo(null);
+    navigate(`/chat/${chatId}`);
     if (!isDesktop) {
       setMobileSidebarOpen(false);
       setProfileOpen(false);
@@ -604,8 +621,8 @@ export default function App() {
 
   function openMyProfile() {
     setEditingMyProfile(false);
-    setMyProfilePageOpen(true);
     setProfileOpen(false);
+    navigate("/profile");
   }
 
   function openPeerProfile() {
@@ -615,7 +632,7 @@ export default function App() {
 
   function closeMyProfilePage() {
     setEditingMyProfile(false);
-    setMyProfilePageOpen(false);
+    navigate(activeChatId ? `/chat/${activeChatId}` : "/chat");
   }
 
   async function signOutToRegistration() {
@@ -631,6 +648,7 @@ export default function App() {
     setActiveChatId(null);
     setIsAuthenticated(false);
     setAuthRefreshKey((prev) => prev + 1);
+    navigate("/auth", { replace: true });
   }
 
   function updateMyProfileDraft<K extends keyof EditableAuthProfile>(
@@ -697,6 +715,82 @@ export default function App() {
     setAuthRefreshKey((prev) => prev + 1);
   };
 
+  useEffect(() => {
+    if (authBooting) return;
+
+    if (!isAuthenticated) {
+      if (!isAuthRoute) {
+        navigate("/auth", { replace: true });
+      }
+      return;
+    }
+
+    if (isAuthRoute || normalizedPathname === "/") {
+      navigate(activeChatId ? `/chat/${activeChatId}` : "/chat", { replace: true });
+      return;
+    }
+
+    if (!isProfileRoute && !isChatRoute) {
+      navigate(activeChatId ? `/chat/${activeChatId}` : "/chat", { replace: true });
+    }
+  }, [
+    activeChatId,
+    authBooting,
+    isAuthenticated,
+    isAuthRoute,
+    isChatRoute,
+    isProfileRoute,
+    navigate,
+    normalizedPathname,
+  ]);
+
+  useEffect(() => {
+    if (myProfilePageOpen !== isProfileRoute) {
+      setMyProfilePageOpen(isProfileRoute);
+    }
+
+    if (isProfileRoute) {
+      setProfileOpen(false);
+      if (!isDesktop) {
+        setMobileSidebarOpen(false);
+      }
+    }
+  }, [isDesktop, isProfileRoute, myProfilePageOpen]);
+
+  useEffect(() => {
+    if (authBooting || !isAuthenticated || !isChatRoute || isProfileRoute) return;
+
+    if (routeChatId) {
+      if (loadingChats) return;
+
+      const targetExists = chats.some((chat) => chat.id === routeChatId);
+      if (!targetExists) {
+        navigate(activeChatId ? `/chat/${activeChatId}` : "/chat", { replace: true });
+        return;
+      }
+
+      if (activeChatId !== routeChatId) {
+        setActiveChatId(routeChatId);
+      }
+      return;
+    }
+
+    if (normalizedPathname === "/chat" && activeChatId && !loadingChats) {
+      navigate(`/chat/${activeChatId}`, { replace: true });
+    }
+  }, [
+    activeChatId,
+    authBooting,
+    chats,
+    isAuthenticated,
+    isChatRoute,
+    isProfileRoute,
+    loadingChats,
+    navigate,
+    normalizedPathname,
+    routeChatId,
+  ]);
+
   if (authBooting) {
     return (
       <div className="flex min-h-[100svh] items-center justify-center bg-[linear-gradient(180deg,#f8fafc_0%,#f6f1ea_100%)] text-slate-900">
@@ -708,7 +802,7 @@ export default function App() {
   }
 
   if (!isAuthenticated) {
-    return <AuthPage onComplete={handleAuthComplete} />;
+    return isAuthRoute ? <AuthPage onComplete={handleAuthComplete} /> : <Navigate to="/auth" replace />;
   }
 
   if (!currentProfile && !loadingChats) {
@@ -909,6 +1003,7 @@ export default function App() {
                   type="button"
                   onClick={() => {
                     setProfileOpen(false);
+                    navigate(activeChatId ? `/chat/${activeChatId}` : "/chat");
                     setMobileSidebarOpen(true);
                   }}
                   className="flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-[18px] text-slate-700/90 transition hover:bg-white/30"
@@ -921,6 +1016,7 @@ export default function App() {
                   onClick={() => {
                     setProfileOpen(false);
                     setSearch("");
+                    navigate(activeChatId ? `/chat/${activeChatId}` : "/chat");
                     setMobileSidebarOpen(true);
                   }}
                   className="flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-[18px] bg-slate-950/78 text-white shadow-[0_10px_20px_rgba(15,23,42,0.10)] ring-1 ring-white/20 transition hover:bg-slate-950/86"
