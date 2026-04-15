@@ -26,7 +26,9 @@ import {
   fetchMessages,
   fetchUsers,
   sendMessageToConversation,
+  subscribeToChatList,
   subscribeToConversation,
+  subscribeToPresence,
   toggleMessageReaction,
 } from "./lib/chat";
 
@@ -68,6 +70,16 @@ function sameDay(a?: string, b?: string) {
 function findMessageById(messages: Message[], id?: string) {
   if (!id) return null;
   return messages.find((message) => message.id === id) || null;
+}
+
+
+function patchPresence(profile: UserProfile, onlineIds: Set<string>): UserProfile {
+  const online = onlineIds.has(profile.id);
+  return {
+    ...profile,
+    online,
+    status: online ? "в сети" : "не в сети",
+  };
 }
 
 export default function App() {
@@ -336,6 +348,67 @@ export default function App() {
     };
   }, [authRefreshKey, isAuthenticated]);
 
+
+  useEffect(() => {
+    if (!isAuthenticated || !authClient || !currentProfile) return;
+
+    const client = authClient;
+    let alive = true;
+    let refreshTimer: number | null = null;
+
+    const runRefresh = () => {
+      if (refreshTimer !== null) {
+        window.clearTimeout(refreshTimer);
+      }
+
+      refreshTimer = window.setTimeout(async () => {
+        try {
+          const nextChats = await fetchChats(client, currentProfile.id);
+          if (!alive) return;
+
+          setChats(nextChats);
+          setActiveChatId((prev) => {
+            if (routeChatId && nextChats.some((chat) => chat.id === routeChatId)) {
+              return routeChatId;
+            }
+
+            if (prev && nextChats.some((chat) => chat.id === prev)) {
+              return prev;
+            }
+
+            return nextChats[0]?.id ?? null;
+          });
+        } catch (error) {
+          console.error("chat list refresh error:", error);
+        }
+      }, 150);
+    };
+
+    const unsubscribe = subscribeToChatList(client, currentProfile.id, runRefresh);
+
+    return () => {
+      alive = false;
+      if (refreshTimer !== null) {
+        window.clearTimeout(refreshTimer);
+      }
+      unsubscribe();
+    };
+  }, [authClient, currentProfile, isAuthenticated, routeChatId]);
+
+
+  useEffect(() => {
+    if (!isAuthenticated || !authClient || !currentProfile?.id) return;
+
+    const unsubscribe = subscribeToPresence(authClient, currentProfile.id, (onlineUserIds) => {
+      setCurrentProfile((prev) => (prev ? patchPresence(prev, onlineUserIds) : prev));
+      setUsers((prev) => prev.map((profile) => patchPresence(profile, onlineUserIds)));
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [authClient, currentProfile?.id, isAuthenticated]);
+
   useEffect(() => {
     if (!isAuthenticated || !authClient || !activeChatId) {
       setMessages([]);
@@ -574,6 +647,8 @@ export default function App() {
     try {
       const chatId = await createOrGetDirectConversation(client, currentProfile.id, userId);
       await refreshChats(chatId);
+      const nextMessages = await fetchMessages(client, chatId);
+      setMessages(nextMessages);
       setActiveChatId(chatId);
       setSearch("");
       setReplyTo(null);
