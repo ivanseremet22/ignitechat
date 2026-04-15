@@ -358,21 +358,26 @@ export default function App() {
     let refreshTimer: number | null = null;
 
     const runRefresh = () => {
+      console.log("[rt] runRefresh scheduled");
+
       if (refreshTimer !== null) {
         window.clearTimeout(refreshTimer);
       }
 
       refreshTimer = window.setTimeout(async () => {
+        console.log("[rt] refreshChats start");
+
         try {
           const nextChats = await fetchChats(client, currentUserId);
           if (!alive) return;
+
+          console.log("[rt] refreshChats done", nextChats.map((chat) => chat.id));
 
           setChats(nextChats);
           setActiveChatId((prev) => {
             if (prev && nextChats.some((chat) => chat.id === prev)) {
               return prev;
             }
-
             return nextChats[0]?.id ?? null;
           });
         } catch (error) {
@@ -407,13 +412,14 @@ export default function App() {
   }, [authClient, currentProfile?.id, isAuthenticated]);
 
   useEffect(() => {
-    if (!isAuthenticated || !authClient || !activeChatId) {
+    if (!isAuthenticated || !authClient || !activeChatId || !currentProfile?.id) {
       setMessages([]);
       setLoadingMessages(false);
       return;
     }
 
     const client = authClient;
+    const currentUserId = currentProfile.id;
     let active = true;
     setLoadingMessages(true);
     setError(null);
@@ -437,18 +443,17 @@ export default function App() {
 
     const unsubscribe = subscribeToConversation(client, activeChatId, () => {
       void loadConversation();
-      if (currentProfile) {
-        void fetchChats(client, currentProfile.id).then((nextChats) => {
-          setChats(nextChats);
-        });
-      }
+      void fetchChats(client, currentUserId).then((nextChats) => {
+        if (!active) return;
+        setChats(nextChats);
+      });
     });
 
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [activeChatId, authClient, currentProfile, isAuthenticated]);
+  }, [activeChatId, authClient, currentProfile?.id, isAuthenticated]);
 
   const filteredChats = useMemo(() => {
     const term = search.trim().toLowerCase();
