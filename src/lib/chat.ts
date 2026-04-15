@@ -258,6 +258,37 @@ export async function fetchUsers(client: SupabaseClient, currentUserId: string):
   }
 }
 
+
+export async function searchUsers(
+  client: SupabaseClient,
+  currentUserId: string,
+  rawQuery: string,
+): Promise<UserProfile[]> {
+  const query = rawQuery.trim().replace(/^@/, "");
+  if (!query) return [];
+
+  try {
+    const result = await client
+      .from("profiles")
+      .select("*")
+      .neq("id", currentUserId)
+      .or(`username.ilike.%${query}%,name.ilike.%${query}%`)
+      .order("username", { ascending: true })
+      .limit(8);
+
+    if (result.error) {
+      throw new Error(result.error.message || "Не удалось найти пользователей.");
+    }
+
+    return ((result.data ?? []) as ProfileRow[])
+      .filter((row) => isUuid(row.id))
+      .map((row) => normalizeProfileRow(row));
+  } catch (error) {
+    console.error("searchUsers error:", error);
+    return [];
+  }
+}
+
 export async function fetchChats(client: SupabaseClient, currentUserId: string): Promise<Chat[]> {
   const participantResult = await client
     .from("conversation_participants")

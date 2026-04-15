@@ -25,6 +25,7 @@ import {
   fetchCurrentProfile,
   fetchMessages,
   fetchUsers,
+  searchUsers,
   sendMessageToConversation,
   subscribeToChatList,
   subscribeToConversation,
@@ -112,6 +113,7 @@ export default function App() {
   const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [searchResults, setSearchResults] = useState<UserProfile[]>([]);
   const [sendPulse, setSendPulse] = useState(false);
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
@@ -464,24 +466,45 @@ export default function App() {
     );
   }, [search, chats]);
 
-  const searchResults = useMemo(() => {
-    const term = search.trim().replace(/^@/, "").toLowerCase();
-    if (!term || !currentProfile) return [];
+  useEffect(() => {
+    if (!isAuthenticated || !authClient || !currentProfile?.id) {
+      setSearchResults([]);
+      return;
+    }
 
-    const existingPeerIds = new Set(chats.map((chat) => chat.peerId).filter(Boolean));
-    return users
-      .filter((user) => {
-        const matches =
-          user.username.toLowerCase().includes(term) || user.name.toLowerCase().includes(term);
-        return matches && user.id !== currentProfile.id;
-      })
-      .sort((left, right) => left.username.localeCompare(right.username))
-      .slice(0, 8)
-      .map((user) => ({
-        ...user,
-        status: existingPeerIds.has(user.id) ? "Чат уже есть" : user.status,
-      }));
-  }, [chats, currentProfile, search, users]);
+    const term = search.trim();
+    if (!term) {
+      setSearchResults([]);
+      return;
+    }
+
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void searchUsers(authClient, currentProfile.id, term)
+        .then((foundUsers) => {
+          if (!active) return;
+
+          const existingPeerIds = new Set(chats.map((chat) => chat.peerId).filter(Boolean));
+          setSearchResults(
+            foundUsers.map((user) => ({
+              ...user,
+              status: existingPeerIds.has(user.id) ? "Чат уже есть" : user.status,
+            })),
+          );
+        })
+        .catch((error) => {
+          if (!active) return;
+          console.error("searchUsers error:", error);
+          setSearchResults([]);
+        });
+    }, 200);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [authClient, chats, currentProfile?.id, isAuthenticated, search]);
+
 
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId) || null,
