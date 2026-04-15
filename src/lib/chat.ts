@@ -627,7 +627,6 @@ export function subscribeToConversation(
   };
 }
 
-
 export function subscribeToChatList(
   client: SupabaseClient,
   currentUserId: string,
@@ -636,7 +635,6 @@ export function subscribeToChatList(
   const channels: RealtimeChannel[] = [];
 
   try {
-    // NEW CHAT for user
     const participantsChannel = client
       .channel(`chat-list-participants:${currentUserId}`)
       .on(
@@ -647,7 +645,10 @@ export function subscribeToChatList(
           table: "conversation_participants",
           filter: `user_id=eq.${currentUserId}`,
         },
-        () => callback(),
+        (payload) => {
+          console.log("[rt] participant INSERT", payload);
+          callback();
+        },
       )
       .on(
         "postgres_changes",
@@ -657,13 +658,17 @@ export function subscribeToChatList(
           table: "conversation_participants",
           filter: `user_id=eq.${currentUserId}`,
         },
-        () => callback(),
+        (payload) => {
+          console.log("[rt] participant DELETE", payload);
+          callback();
+        },
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("[rt] participants channel status:", status);
+      });
 
     channels.push(participantsChannel);
 
-    // MESSAGE updates -> refresh sidebar
     const messagesChannel = client
       .channel(`chat-list-messages:${currentUserId}`)
       .on(
@@ -673,13 +678,17 @@ export function subscribeToChatList(
           schema: "public",
           table: "messages",
         },
-        () => callback(),
+        (payload) => {
+          console.log("[rt] messages change", payload);
+          callback();
+        },
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("[rt] messages channel status:", status);
+      });
 
     channels.push(messagesChannel);
 
-    // metadata updates
     const conversationsChannel = client
       .channel(`chat-list-conversations:${currentUserId}`)
       .on(
@@ -689,12 +698,16 @@ export function subscribeToChatList(
           schema: "public",
           table: "conversations",
         },
-        () => callback(),
+        (payload) => {
+          console.log("[rt] conversations UPDATE", payload);
+          callback();
+        },
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("[rt] conversations channel status:", status);
+      });
 
     channels.push(conversationsChannel);
-
   } catch (error) {
     console.error("subscribeToChatList error:", error);
   }
@@ -705,46 +718,3 @@ export function subscribeToChatList(
     }
   };
 }
-
-export function subscribeToPresence(
-  client: SupabaseClient,
-  currentUserId: string,
-  callback: (onlineUserIds: Set<string>) => void,
-): () => void {
-  let channel: RealtimeChannel | null = null;
-
-  try {
-    channel = client
-      .channel("presence:ignitechat", {
-        config: {
-          presence: {
-            key: currentUserId,
-          },
-        },
-      })
-      .on("presence", { event: "sync" }, () => {
-        const state = channel?.presenceState<Record<string, unknown>[]>() ?? {};
-        callback(new Set(Object.keys(state)));
-      })
-      .subscribe(async (status) => {
-        if (status === "SUBSCRIBED" && channel) {
-          await channel.track({
-            user_id: currentUserId,
-            online_at: new Date().toISOString(),
-          });
-          const state = channel.presenceState<Record<string, unknown>[]>();
-          callback(new Set(Object.keys(state)));
-        }
-      });
-  } catch (error) {
-    console.error("subscribeToPresence error:", error);
-  }
-
-  return () => {
-    if (channel) {
-      void channel.untrack();
-      void client.removeChannel(channel);
-    }
-  };
-}
-

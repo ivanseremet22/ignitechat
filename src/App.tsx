@@ -28,7 +28,6 @@ import {
   sendMessageToConversation,
   subscribeToChatList,
   subscribeToConversation,
-  subscribeToPresence,
   toggleMessageReaction,
 } from "./lib/chat";
 
@@ -70,16 +69,6 @@ function sameDay(a?: string, b?: string) {
 function findMessageById(messages: Message[], id?: string) {
   if (!id) return null;
   return messages.find((message) => message.id === id) || null;
-}
-
-
-function patchPresence(profile: UserProfile, onlineIds: Set<string>): UserProfile {
-  const online = onlineIds.has(profile.id);
-  return {
-    ...profile,
-    online,
-    status: online ? "в сети" : "не в сети",
-  };
 }
 
 export default function App() {
@@ -357,15 +346,18 @@ export default function App() {
     let refreshTimer: number | null = null;
 
     const runRefresh = () => {
+      console.log("[rt] runRefresh scheduled");
       if (refreshTimer !== null) {
         window.clearTimeout(refreshTimer);
       }
 
       refreshTimer = window.setTimeout(async () => {
+        console.log("[rt] refreshChats start");
         try {
           const nextChats = await fetchChats(client, currentProfile.id);
           if (!alive) return;
 
+          console.log("[rt] refreshChats done", nextChats.map((chat) => chat.id));
           setChats(nextChats);
           setActiveChatId((prev) => {
             if (routeChatId && nextChats.some((chat) => chat.id === routeChatId)) {
@@ -394,20 +386,6 @@ export default function App() {
       unsubscribe();
     };
   }, [authClient, currentProfile, isAuthenticated, routeChatId]);
-
-
-  useEffect(() => {
-    if (!isAuthenticated || !authClient || !currentProfile?.id) return;
-
-    const unsubscribe = subscribeToPresence(authClient, currentProfile.id, (onlineUserIds) => {
-      setCurrentProfile((prev) => (prev ? patchPresence(prev, onlineUserIds) : prev));
-      setUsers((prev) => prev.map((profile) => patchPresence(profile, onlineUserIds)));
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, [authClient, currentProfile?.id, isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated || !authClient || !activeChatId) {
