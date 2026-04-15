@@ -21,6 +21,7 @@ import {
 } from "./lib/auth";
 import {
   createOrGetDirectConversation,
+  fetchChatById,
   fetchChats,
   fetchCurrentProfile,
   fetchMessages,
@@ -31,6 +32,7 @@ import {
   subscribeToConversation,
   subscribeToPresence,
   toggleMessageReaction,
+  type ChatListRealtimeEvent,
 } from "./lib/chat";
 
 function formatTime(value: string) {
@@ -82,6 +84,35 @@ function patchPresence(profile: UserProfile, onlineIds: Set<string>): UserProfil
     status: online ? "в сети" : "не в сети",
   };
 }
+
+
+function sortChatsByUpdatedAt(items: Chat[]): Chat[] {
+  return [...items].sort(
+    (left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
+  );
+}
+
+function upsertChat(items: Chat[], nextChat: Chat): Chat[] {
+  const filtered = items.filter((chat) => chat.id !== nextChat.id);
+  return sortChatsByUpdatedAt([nextChat, ...filtered]);
+}
+
+function patchChatPreview(
+  items: Chat[],
+  conversationId: string,
+  preview: string,
+  updatedAt: string,
+): Chat[] {
+  const existing = items.find((chat) => chat.id === conversationId);
+  if (!existing) return items;
+
+  return upsertChat(items, {
+    ...existing,
+    preview,
+    updatedAt,
+  });
+}
+
 
 export default function App() {
   const location = useLocation();
@@ -356,48 +387,79 @@ export default function App() {
 
     const client = authClient;
     const currentUserId = currentProfile.id;
-    let alive = true;
-    let refreshTimer: number | null = null;
+    let active = true;
 
-    const runRefresh = () => {
-      console.log("[rt] runRefresh scheduled");
+    const applyChatListEvent = async (event: ChatListRealtimeEvent) => {
+      if (!active) return;
 
-      if (refreshTimer !== null) {
-        window.clearTimeout(refreshTimer);
-      }
+      try {
+        if (event.kind === "participant_insert") {
+          const nextChat = await fetchChatById(client, currentUserId, event.conversationId);
+          if (!active || !nextChat) return;
 
-      refreshTimer = window.setTimeout(async () => {
-        console.log("[rt] refreshChats start");
-
-        try {
-          const nextChats = await fetchChats(client, currentUserId);
-          if (!alive) return;
-
-          console.log("[rt] refreshChats done", nextChats.map((chat) => chat.id));
-
-          setChats(nextChats);
-          setActiveChatId((prev) => {
-            if (prev && nextChats.some((chat) => chat.id === prev)) {
-              return prev;
-            }
-            return nextChats[0]?.id ?? null;
-          });
-        } catch (error) {
-          console.error("chat list refresh error:", error);
+          setChats((prev) => upsertChat(prev, nextChat));
+          setActiveChatId((prev) => prev ?? nextChat.id);
+          return;
         }
-      }, 150);
+
+        if (event.kind === "participant_delete") {
+          setChats((prev) => prev.filter((chat) => chat.id !== event.conversationId));
+          setActiveChatId((prev) => (prev === event.conversationId ? null : prev));
+          return;
+        }
+
+        if (event.kind === "message_insert" || event.kind === "message_update") {
+          let didPatchExisting = false;
+
+          setChats((prev) => {
+            const nextItems = patchChatPreview(prev, event.conversationId, event.preview, event.createdAt);
+            didPatchExisting = nextItems !== prev;
+            return nextItems;
+          });
+
+          if (!didPatchExisting) {
+            const nextChat = await fetchChatById(client, currentUserId, event.conversationId);
+            if (!active || !nextChat) return;
+            setChats((prev) => upsertChat(prev, nextChat));
+          }
+          return;
+        }
+
+        if (event.kind === "message_delete") {
+          if (activeChatId === event.conversationId) {
+            const nextMessages = await fetchMessages(client, event.conversationId);
+            if (!active) return;
+            setMessages(nextMessages);
+          }
+          return;
+        }
+
+        if (event.kind === "conversation_update") {
+          setChats((prev) => {
+            const existing = prev.find((chat) => chat.id === event.conversationId);
+            if (!existing) return prev;
+
+            return upsertChat(prev, {
+              ...existing,
+              preview: event.preview?.trim() || existing.preview,
+              updatedAt: event.updatedAt || existing.updatedAt,
+            });
+          });
+        }
+      } catch (error) {
+        console.error("chat list realtime patch error:", error);
+      }
     };
 
-    const unsubscribe = subscribeToChatList(client, currentUserId, runRefresh);
+    const unsubscribe = subscribeToChatList(client, currentUserId, (event) => {
+      void applyChatListEvent(event);
+    });
 
     return () => {
-      alive = false;
-      if (refreshTimer !== null) {
-        window.clearTimeout(refreshTimer);
-      }
+      active = false;
       unsubscribe();
     };
-  }, [isAuthenticated, authClient, currentProfile?.id]);
+  }, [activeChatId, authClient, currentProfile?.id, isAuthenticated]);
 
 
   useEffect(() => {
@@ -421,7 +483,6 @@ export default function App() {
     }
 
     const client = authClient;
-    const currentUserId = currentProfile.id;
     let active = true;
     setLoadingMessages(true);
     setError(null);
@@ -445,10 +506,6 @@ export default function App() {
 
     const unsubscribe = subscribeToConversation(client, activeChatId, () => {
       void loadConversation();
-      void fetchChats(client, currentUserId).then((nextChats) => {
-        if (!active) return;
-        setChats(nextChats);
-      });
     });
 
     return () => {
@@ -598,18 +655,6 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [playingVoiceId, messages]);
 
-  async function refreshChats(keepChatId?: string | null) {
-    if (!authClient || !currentProfile) return;
-    const client = authClient;
-    const nextChats = await fetchChats(client, currentProfile.id);
-    setChats(nextChats);
-    setActiveChatId((prev) => {
-      const target = keepChatId ?? prev;
-      if (target && nextChats.some((chat) => chat.id === target)) return target;
-      return nextChats[0]?.id ?? null;
-    });
-  }
-
   async function handleSend() {
     if (!currentProfile || !activeChat || !authClient) return;
 
@@ -630,6 +675,10 @@ export default function App() {
         voice: hasVoice ? pendingVoiceSeconds || undefined : undefined,
       });
 
+      const preview = hasVoice ? "🎤 Голосовое сообщение" : trimmed || "Сообщение";
+      const now = new Date().toISOString();
+
+      setChats((prev) => patchChatPreview(prev, activeChat.id, preview, now));
       setDraft("");
       setReplyTo(null);
       setPendingVoiceSeconds(null);
@@ -637,7 +686,7 @@ export default function App() {
       setRecordStart(null);
       setSendPulse(true);
       window.setTimeout(() => setSendPulse(false), 280);
-      await refreshChats(activeChat.id);
+
       const nextMessages = await fetchMessages(client, activeChat.id);
       setMessages(nextMessages);
     } catch (err: unknown) {
@@ -673,7 +722,11 @@ export default function App() {
 
     try {
       const chatId = await createOrGetDirectConversation(client, currentProfile.id, userId);
-      await refreshChats(chatId);
+      const nextChat = await fetchChatById(client, currentProfile.id, chatId);
+      if (nextChat) {
+        setChats((prev) => upsertChat(prev, nextChat));
+      }
+
       const nextMessages = await fetchMessages(client, chatId);
       setMessages(nextMessages);
       setActiveChatId(chatId);

@@ -35,6 +35,15 @@ type ReactionRow = {
   type: Reaction["type"];
 };
 
+export type ChatListRealtimeEvent =
+  | { kind: "participant_insert"; conversationId: string }
+  | { kind: "participant_delete"; conversationId: string }
+  | { kind: "message_insert"; conversationId: string; preview: string; createdAt: string }
+  | { kind: "message_update"; conversationId: string; preview: string; createdAt: string }
+  | { kind: "message_delete"; conversationId: string }
+  | { kind: "conversation_update"; conversationId: string; preview: string | null; updatedAt: string | null };
+
+
 function getString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
@@ -287,6 +296,98 @@ export async function searchUsers(
     console.error("searchUsers error:", error);
     return [];
   }
+}
+
+
+export async function fetchChatById(
+  client: SupabaseClient,
+  currentUserId: string,
+  conversationId: string,
+): Promise<Chat | null> {
+  if (!isUuid(currentUserId) || !isUuid(conversationId)) {
+    return null;
+  }
+
+  const mineResult = await client
+    .from("conversation_participants")
+    .select("conversation_id,user_id")
+    .eq("user_id", currentUserId)
+    .eq("conversation_id", conversationId)
+    .limit(1);
+
+  if (mineResult.error) {
+    if (isMissingSchemaError(mineResult.error.message)) {
+      return null;
+    }
+    throw new Error(mineResult.error.message || "Не удалось проверить участие в чате.");
+  }
+
+  const mineRows = ((mineResult.data ?? []) as ConversationParticipantRow[]).filter((row) => isUuid(row.conversation_id));
+  if (mineRows.length === 0) {
+    return null;
+  }
+
+  const conversationResult = await client
+    .from("conversations")
+    .select("id,updated_at,last_message_preview")
+    .eq("id", conversationId)
+    .maybeSingle();
+
+  if (conversationResult.error) {
+    if (isMissingSchemaError(conversationResult.error.message)) {
+      return null;
+    }
+    throw new Error(conversationResult.error.message || "Не удалось загрузить чат.");
+  }
+
+  const conversation = conversationResult.data as ConversationRow | null;
+  if (!conversation) {
+    return null;
+  }
+
+  const participantsResult = await client
+    .from("conversation_participants")
+    .select("conversation_id,user_id")
+    .eq("conversation_id", conversationId);
+
+  if (participantsResult.error) {
+    if (isMissingSchemaError(participantsResult.error.message)) {
+      return null;
+    }
+    throw new Error(participantsResult.error.message || "Не удалось загрузить участников.");
+  }
+
+  const participants = ((participantsResult.data ?? []) as ConversationParticipantRow[]).filter(
+    (row) => isUuid(row.conversation_id) && isUuid(row.user_id),
+  );
+
+  const peerParticipant = participants.find((participant) => participant.user_id !== currentUserId);
+  let peerProfile: UserProfile | undefined;
+
+  if (peerParticipant) {
+    try {
+      const profileRows = await fetchProfileRows(client, { ids: [peerParticipant.user_id] });
+      const firstProfile = profileRows[0];
+      if (firstProfile) {
+        peerProfile = normalizeProfileRow(firstProfile);
+      }
+    } catch (error) {
+      console.error("fetchChatById profile error:", error);
+    }
+  }
+
+  const title = peerProfile?.name || peerProfile?.username || "Новый чат";
+
+  return {
+    id: conversation.id,
+    title,
+    avatar: peerProfile?.avatar || getInitials(title),
+    preview: conversation.last_message_preview?.trim() || "Сообщений пока нет",
+    updatedAt: conversation.updated_at || new Date().toISOString(),
+    unread: 0,
+    pinned: false,
+    peerId: peerProfile?.id,
+  };
 }
 
 export async function fetchChats(client: SupabaseClient, currentUserId: string): Promise<Chat[]> {
@@ -659,15 +760,15 @@ export function subscribeToConversation(
 }
 
 
+
 export function subscribeToChatList(
   client: SupabaseClient,
   currentUserId: string,
-  callback: () => void,
+  callback: (event: ChatListRealtimeEvent) => void,
 ): () => void {
   const channels: RealtimeChannel[] = [];
 
   try {
-    // NEW CHAT for user
     const participantsChannel = client
       .channel(`chat-list-participants:${currentUserId}`)
       .on(
@@ -678,7 +779,11 @@ export function subscribeToChatList(
           table: "conversation_participants",
           filter: `user_id=eq.${currentUserId}`,
         },
-        () => callback(),
+        (payload) => {
+          const conversationId = getString((payload.new as Record<string, unknown> | null)?.conversation_id);
+          if (!conversationId) return;
+          callback({ kind: "participant_insert", conversationId });
+        },
       )
       .on(
         "postgres_changes",
@@ -688,29 +793,78 @@ export function subscribeToChatList(
           table: "conversation_participants",
           filter: `user_id=eq.${currentUserId}`,
         },
-        () => callback(),
+        (payload) => {
+          const conversationId = getString((payload.old as Record<string, unknown> | null)?.conversation_id);
+          if (!conversationId) return;
+          callback({ kind: "participant_delete", conversationId });
+        },
       )
       .subscribe();
 
     channels.push(participantsChannel);
 
-    // MESSAGE updates -> refresh sidebar
     const messagesChannel = client
       .channel(`chat-list-messages:${currentUserId}`)
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "INSERT",
           schema: "public",
           table: "messages",
         },
-        () => callback(),
+        (payload) => {
+          const next = (payload.new as Record<string, unknown> | null) ?? {};
+          const conversationId = getString(next.conversation_id);
+          if (!conversationId) return;
+          const text = getString(next.text).trim();
+          const preview = text || (next.voice_duration ? "🎤 Голосовое сообщение" : "Сообщение");
+          callback({
+            kind: "message_insert",
+            conversationId,
+            preview,
+            createdAt: getString(next.created_at, new Date().toISOString()),
+          });
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+        },
+        (payload) => {
+          const next = (payload.new as Record<string, unknown> | null) ?? {};
+          const conversationId = getString(next.conversation_id);
+          if (!conversationId) return;
+          const text = getString(next.text).trim();
+          const preview = text || (next.voice_duration ? "🎤 Голосовое сообщение" : "Сообщение");
+          callback({
+            kind: "message_update",
+            conversationId,
+            preview,
+            createdAt: getString(next.created_at, new Date().toISOString()),
+          });
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "messages",
+        },
+        (payload) => {
+          const prev = (payload.old as Record<string, unknown> | null) ?? {};
+          const conversationId = getString(prev.conversation_id);
+          if (!conversationId) return;
+          callback({ kind: "message_delete", conversationId });
+        },
       )
       .subscribe();
 
     channels.push(messagesChannel);
 
-    // metadata updates
     const conversationsChannel = client
       .channel(`chat-list-conversations:${currentUserId}`)
       .on(
@@ -720,12 +874,21 @@ export function subscribeToChatList(
           schema: "public",
           table: "conversations",
         },
-        () => callback(),
+        (payload) => {
+          const next = (payload.new as Record<string, unknown> | null) ?? {};
+          const conversationId = getString(next.id);
+          if (!conversationId) return;
+          callback({
+            kind: "conversation_update",
+            conversationId,
+            preview: getNullableString(next.last_message_preview),
+            updatedAt: getNullableString(next.updated_at),
+          });
+        },
       )
       .subscribe();
 
     channels.push(conversationsChannel);
-
   } catch (error) {
     console.error("subscribeToChatList error:", error);
   }
