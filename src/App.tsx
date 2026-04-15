@@ -350,9 +350,10 @@ export default function App() {
 
 
   useEffect(() => {
-    if (!isAuthenticated || !authClient || !currentProfile) return;
+    if (!isAuthenticated || !authClient || !currentProfile?.id) return;
 
     const client = authClient;
+    const currentUserId = currentProfile.id;
     let alive = true;
     let refreshTimer: number | null = null;
 
@@ -363,15 +364,11 @@ export default function App() {
 
       refreshTimer = window.setTimeout(async () => {
         try {
-          const nextChats = await fetchChats(client, currentProfile.id);
+          const nextChats = await fetchChats(client, currentUserId);
           if (!alive) return;
 
           setChats(nextChats);
           setActiveChatId((prev) => {
-            if (routeChatId && nextChats.some((chat) => chat.id === routeChatId)) {
-              return routeChatId;
-            }
-
             if (prev && nextChats.some((chat) => chat.id === prev)) {
               return prev;
             }
@@ -384,7 +381,7 @@ export default function App() {
       }, 150);
     };
 
-    const unsubscribe = subscribeToChatList(client, currentProfile.id, runRefresh);
+    const unsubscribe = subscribeToChatList(client, currentUserId, runRefresh);
 
     return () => {
       alive = false;
@@ -393,7 +390,7 @@ export default function App() {
       }
       unsubscribe();
     };
-  }, [authClient, currentProfile, isAuthenticated, routeChatId]);
+  }, [isAuthenticated, authClient, currentProfile?.id]);
 
 
   useEffect(() => {
