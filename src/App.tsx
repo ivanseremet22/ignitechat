@@ -472,6 +472,8 @@ export default function App() {
       return;
     }
 
+    const client = authClient;
+    const currentUserId = currentProfile.id;
     const term = search.trim();
     if (!term) {
       setSearchResults([]);
@@ -480,7 +482,7 @@ export default function App() {
 
     let active = true;
     const timer = window.setTimeout(() => {
-      void searchUsers(authClient, currentProfile.id, term)
+      void searchUsers(client, currentUserId, term)
         .then((foundUsers) => {
           if (!active) return;
 
