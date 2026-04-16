@@ -29,6 +29,7 @@ import {
   subscribeToChatList,
   subscribeToConversation,
   toggleMessageReaction,
+  updateReadStatus,
   type ChatListRealtimeEvent,
   type ConversationRealtimeEvent,
 } from "./lib/chat";
@@ -435,6 +436,16 @@ export default function App() {
 
         const nextChats = mergeUnreadIntoChats(fetchedChats, savedUnread);
 
+        // Синхронизируем курсоры прочтения из БД
+        fetchedChats.forEach((chat) => {
+          if (chat.peerReadAt) {
+            const current = peerReadCursorRef.current[chat.id];
+            if (!current || new Date(chat.peerReadAt).getTime() > new Date(current).getTime()) {
+              peerReadCursorRef.current[chat.id] = chat.peerReadAt;
+            }
+          }
+        });
+
         setCurrentProfile(nextCurrentProfile);
         setUsers(nextUsers);
         setChats(nextChats);
@@ -608,7 +619,13 @@ export default function App() {
       };
       persistReadCursors();
 
+      // Обновляем сообщения
       setMessages((prev) => applyPeerReadCursor(prev, currentUserId, readAt));
+
+      // Обновляем чат в списке, чтобы сохранить состояние
+      setChats((prev) =>
+        prev.map((chat) => (chat.id === activeChatId ? { ...chat, peerReadAt: readAt } : chat)),
+      );
     };
 
     const readChannel = client
@@ -626,6 +643,10 @@ export default function App() {
     const broadcastRead = async (readAt: string) => {
       clearUnreadForActiveChat();
       try {
+        // Обновляем в БД для персистентности
+        void updateReadStatus(client, activeChatId, currentUserId, readAt);
+
+        // Транслируем в реалтайме для мгновенного обновления у собеседника
         await readChannel.send({
           type: "broadcast",
           event: "read",
@@ -712,6 +733,22 @@ export default function App() {
             void broadcastRead(createdAt);
           }
 
+          return;
+        }
+
+        if (event.kind === "participant") {
+          const payload = coercePayloadRecord(event.payload);
+          const nextRow =
+            event.event === "DELETE"
+              ? coercePayloadRecord(payload.old)
+              : coercePayloadRecord(payload.new);
+
+          const userId = getStringField(nextRow, "user_id");
+          const readAt = getStringField(nextRow, "last_read_at");
+
+          if (userId && userId !== currentUserId && readAt) {
+            applyPeerReadAt(readAt);
+          }
           return;
         }
 

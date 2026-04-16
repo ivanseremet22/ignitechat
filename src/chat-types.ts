@@ -58,6 +58,7 @@ export type Chat = {
   avatar: string;
   preview: string;
   peerId?: string;
+  peerReadAt?: string | null;
   pinned?: boolean;
   unread?: number;
   updatedAt: string;

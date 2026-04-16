@@ -16,6 +16,7 @@ type ConversationRow = {
 type ConversationParticipantRow = {
   conversation_id: string;
   user_id: string;
+  last_read_at?: string | null;
 };
 
 type MessageRow = {
@@ -60,6 +61,11 @@ export type ConversationRealtimeEvent =
     }
   | {
       kind: "reaction";
+      event: "INSERT" | "UPDATE" | "DELETE";
+      payload: Record<string, unknown>;
+    }
+  | {
+      kind: "participant";
       event: "INSERT" | "UPDATE" | "DELETE";
       payload: Record<string, unknown>;
     };
@@ -324,7 +330,7 @@ export async function fetchChats(client: SupabaseClient, currentUserId: string):
 
   const participantsResult = await client
     .from("conversation_participants")
-    .select("conversation_id,user_id")
+    .select("conversation_id,user_id,last_read_at")
     .in("conversation_id", conversationIds);
 
   if (participantsResult.error) {
@@ -378,6 +384,7 @@ export async function fetchChats(client: SupabaseClient, currentUserId: string):
       unread: 0,
       pinned: false,
       peerId: peerProfile?.id,
+      peerReadAt: peerParticipant?.last_read_at,
     };
   });
 }
@@ -654,6 +661,21 @@ export function subscribeToConversation(
             payload: payload as unknown as Record<string, unknown>,
           }),
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "conversation_participants",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) =>
+          callback({
+            kind: "participant",
+            event: payload.eventType as "INSERT" | "UPDATE" | "DELETE",
+            payload: payload as unknown as Record<string, unknown>,
+          }),
+      )
       .subscribe();
   } catch (error) {
     console.error("subscribeToConversation error:", error);
@@ -664,6 +686,25 @@ export function subscribeToConversation(
       void client.removeChannel(channel);
     }
   };
+}
+
+export async function updateReadStatus(
+  client: SupabaseClient,
+  conversationId: string,
+  userId: string,
+  readAt: string = new Date().toISOString(),
+) {
+  if (!isUuid(conversationId) || !isUuid(userId)) return;
+
+  const { error } = await client
+    .from("conversation_participants")
+    .update({ last_read_at: readAt })
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("updateReadStatus error:", error);
+  }
 }
 
 export function subscribeToChatList(
