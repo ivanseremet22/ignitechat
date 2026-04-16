@@ -273,17 +273,42 @@ function createClientSideUuid() {
 export async function fetchCurrentProfile(client: SupabaseClient): Promise<UserProfile> {
   const user = await getAuthenticatedUser(client);
   const rows = await fetchProfileRows(client, { userId: user.id });
-  const profile = rows[0];
+  let profile = rows[0];
 
   if (!profile) {
-    return normalizeProfileRow(
-      {
-        id: user.id,
-        username: user.email?.split("@")[0] ?? null,
-        created_at: user.created_at,
-      },
-      user,
-    );
+    // Если профиля нет, пробуем создать его (на случай если триггер не сработал)
+    console.log("Profile not found in DB, attempting to create for current user:", user.id);
+    const baseUsername = user.email ? user.email.split("@")[0] : `user_${user.id.slice(0, 6)}`;
+    
+    const newProfileData = {
+      id: user.id,
+      username: baseUsername.toLowerCase(),
+      name: user.user_metadata?.name || baseUsername,
+      email: user.email || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: insertedData, error: insertError } = await client
+      .from("profiles")
+      .upsert(newProfileData, { onConflict: "id" })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error("Failed to auto-create profile in fetchCurrentProfile:", insertError);
+      // Если все же не удалось (например, RLS), возвращаем фоллбек для UI, 
+      // но предупреждаем, что операции с БД могут упасть
+      return normalizeProfileRow(
+        {
+          id: user.id,
+          username: baseUsername,
+          created_at: user.created_at,
+        },
+        user,
+      );
+    }
+    
+    profile = insertedData as ProfileRow;
   }
 
   return normalizeProfileRow(profile, user);
