@@ -630,12 +630,7 @@ export function subscribeToConversation(
 export function subscribeToChatList(
   client: SupabaseClient,
   currentUserId: string,
-  callback: (payload?: {
-    source?: "participants" | "messages" | "conversations";
-    eventType?: string;
-    new?: Record<string, unknown>;
-    old?: Record<string, unknown>;
-  }) => void,
+  callback: (payload?: { table: string; eventType: string; new?: Record<string, unknown>; old?: Record<string, unknown> }) => void,
 ): () => void {
   const channels: RealtimeChannel[] = [];
 
@@ -650,38 +645,16 @@ export function subscribeToChatList(
           table: "conversation_participants",
           filter: `user_id=eq.${currentUserId}`,
         },
-        (payload) =>
-          callback({
-            source: "participants",
-            eventType: payload.eventType,
-            new: (payload as { new?: Record<string, unknown> }).new,
-            old: (payload as { old?: Record<string, unknown> }).old,
-          }),
+        (payload) => callback({
+          table: "conversation_participants",
+          eventType: payload.eventType,
+          new: payload.new as Record<string, unknown>,
+          old: payload.old as Record<string, unknown>,
+        }),
       )
       .subscribe();
 
     channels.push(participantsChannel);
-
-    const messagesChannel = client
-      .channel(`chat-list-messages:${currentUserId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "messages",
-        },
-        (payload) =>
-          callback({
-            source: "messages",
-            eventType: payload.eventType,
-            new: (payload as { new?: Record<string, unknown> }).new,
-            old: (payload as { old?: Record<string, unknown> }).old,
-          }),
-      )
-      .subscribe();
-
-    channels.push(messagesChannel);
 
     const conversationsChannel = client
       .channel(`chat-list-conversations:${currentUserId}`)
@@ -692,17 +665,36 @@ export function subscribeToChatList(
           schema: "public",
           table: "conversations",
         },
-        (payload) =>
-          callback({
-            source: "conversations",
-            eventType: payload.eventType,
-            new: (payload as { new?: Record<string, unknown> }).new,
-            old: (payload as { old?: Record<string, unknown> }).old,
-          }),
+        (payload) => callback({
+          table: "conversations",
+          eventType: payload.eventType,
+          new: payload.new as Record<string, unknown>,
+          old: payload.old as Record<string, unknown>,
+        }),
       )
       .subscribe();
 
     channels.push(conversationsChannel);
+
+    const messagesChannel = client
+      .channel(`chat-list-messages:${currentUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "messages",
+        },
+        (payload) => callback({
+          table: "messages",
+          eventType: payload.eventType,
+          new: payload.new as Record<string, unknown>,
+          old: payload.old as Record<string, unknown>,
+        }),
+      )
+      .subscribe();
+
+    channels.push(messagesChannel);
   } catch (error) {
     console.error("subscribeToChatList error:", error);
   }
