@@ -10,6 +10,8 @@ export type EditableAuthProfile = {
   avatarDataUrl?: string;
 };
 
+export type ProfileDraft = EditableAuthProfile;
+
 export type User = {
   id: string;
   name: string;
