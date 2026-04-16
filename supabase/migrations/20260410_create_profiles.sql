@@ -136,3 +136,18 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- Backfill existing users who might be missing profiles
+insert into public.profiles (id, username, name, email, avatar_url, bio, phone, location, status)
+select 
+  id,
+  coalesce(raw_user_meta_data->>'username', split_part(email, '@', 1), 'user_' || substr(id::text, 1, 6)),
+  coalesce(raw_user_meta_data->>'name', raw_user_meta_data->>'username', split_part(email, '@', 1)),
+  email,
+  raw_user_meta_data->>'avatarDataUrl',
+  coalesce(raw_user_meta_data->>'bio', ''),
+  coalesce(raw_user_meta_data->>'phone', ''),
+  coalesce(raw_user_meta_data->>'location', ''),
+  coalesce(raw_user_meta_data->>'statusText', 'в сети')
+from auth.users
+on conflict (id) do nothing;
