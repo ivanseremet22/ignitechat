@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { MessageSquarePlus, Search, UserRound, Video } from "lucide-react";
@@ -71,31 +71,33 @@ function findMessageById(messages: Message[], id?: string) {
   return messages.find((message) => message.id === id) || null;
 }
 
+type UnreadMap = Record<string, number>;
+
 function unreadStorageKey(userId: string) {
   return `ignite.unread.${userId}`;
 }
 
-function readUnreadMap(userId: string): Record<string, number> {
+function readUnreadMap(userId: string): UnreadMap {
   if (typeof window === "undefined") return {};
   try {
     const raw = window.localStorage.getItem(unreadStorageKey(userId));
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return Object.fromEntries(
-      Object.entries(parsed).map(([key, value]) => [key, typeof value === "number" ? value : 0]),
+      Object.entries(parsed).map(([key, value]) => [key, typeof value === "number" && Number.isFinite(value) ? value : 0]),
     );
   } catch {
     return {};
   }
 }
 
-function writeUnreadMap(userId: string, value: Record<string, number>) {
+function writeUnreadMap(userId: string, value: UnreadMap) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(unreadStorageKey(userId), JSON.stringify(value));
 }
 
-function applyUnreadToChats(list: Chat[], unreadMap: Record<string, number>): Chat[] {
-  return list.map((chat) => ({
+function mergeChatsWithUnread(chats: Chat[], unreadMap: UnreadMap): Chat[] {
+  return chats.map((chat) => ({
     ...chat,
     unread: unreadMap[chat.id] ?? 0,
   }));
@@ -165,13 +167,7 @@ export default function App() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const profileAvatarInputRef = useRef<HTMLInputElement | null>(null);
   const mobileEmptyStatePromptShownRef = useRef(false);
-
-  const unreadMapRef = useRef<Record<string, number>>({});
-  const activeChatIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    activeChatIdRef.current = activeChatId;
-  }, [activeChatId]);
+  const unreadMapRef = useRef<UnreadMap>({});
 
   useEffect(() => {
     let active = true;
@@ -211,6 +207,7 @@ export default function App() {
         setChats([]);
         setMessages([]);
         setActiveChatId(null);
+        unreadMapRef.current = {};
       }
       setAuthRefreshKey((prev) => prev + 1);
     });
@@ -344,19 +341,20 @@ export default function App() {
           throw new Error("Не удалось подготовить профиль текущего пользователя.");
         }
 
-        const [nextUsers, nextChats] = await Promise.all([
+        const [nextUsers, fetchedChats] = await Promise.all([
           fetchUsers(client, nextCurrentProfile.id),
           fetchChats(client, nextCurrentProfile.id),
         ]);
 
         if (!mounted) return;
 
-        const savedUnread = readUnreadMap(nextCurrentProfile.id);
-        unreadMapRef.current = savedUnread;
+        const persistedUnread = readUnreadMap(nextCurrentProfile.id);
+        unreadMapRef.current = persistedUnread;
+        const nextChats = mergeChatsWithUnread(fetchedChats, persistedUnread);
 
         setCurrentProfile(nextCurrentProfile);
         setUsers(nextUsers);
-        setChats(applyUnreadToChats(nextChats, savedUnread));
+        setChats(nextChats);
         setActiveChatId((prev) => {
           if (prev && nextChats.some((chat) => chat.id === prev)) return prev;
           return nextChats[0]?.id ?? null;
@@ -379,67 +377,61 @@ export default function App() {
   }, [authRefreshKey, isAuthenticated]);
 
 
+  const refreshChatsWithUnread = useCallback(
+    async (keepChatId?: string | null) => {
+      if (!authClient || !currentProfile) return;
+
+      const fetchedChats = await fetchChats(authClient, currentProfile.id);
+      const mergedChats = mergeChatsWithUnread(fetchedChats, unreadMapRef.current);
+
+      setChats(mergedChats);
+      setActiveChatId((prev) => {
+        const target = keepChatId ?? routeChatId ?? prev;
+        if (target && mergedChats.some((chat) => chat.id === target)) return target;
+        return mergedChats[0]?.id ?? null;
+      });
+    },
+    [authClient, currentProfile, routeChatId],
+  );
+
   useEffect(() => {
     if (!isAuthenticated || !authClient || !currentProfile) return;
 
     const client = authClient;
-    const currentUserId = currentProfile.id;
     let alive = true;
     let refreshTimer: number | null = null;
 
-    const scheduleRefresh = () => {
+    const scheduleRefresh = (keepChatId?: string | null) => {
       if (refreshTimer !== null) {
         window.clearTimeout(refreshTimer);
       }
 
       refreshTimer = window.setTimeout(async () => {
         try {
-          const nextChats = await fetchChats(client, currentUserId);
-          if (!alive) return;
-
-          setChats(applyUnreadToChats(nextChats, unreadMapRef.current));
-          setActiveChatId((prev) => {
-            if (routeChatId && nextChats.some((chat) => chat.id === routeChatId)) {
-              return routeChatId;
-            }
-
-            if (prev && nextChats.some((chat) => chat.id === prev)) {
-              return prev;
-            }
-
-            return nextChats[0]?.id ?? null;
-          });
+          await refreshChatsWithUnread(keepChatId);
         } catch (error) {
           console.error("chat list refresh error:", error);
         }
-      }, 150);
+      }, 120);
     };
 
-    const unsubscribe = subscribeToChatList(client, currentUserId, (payload) => {
-      if (
-        payload?.table === "messages" &&
-        payload.eventType === "INSERT" &&
-        payload.new
-      ) {
-        const conversationId = typeof payload.new.conversation_id === "string" ? payload.new.conversation_id : null;
-        const senderId = typeof payload.new.sender_id === "string" ? payload.new.sender_id : null;
+    const unsubscribe = subscribeToChatList(client, currentProfile.id, (event) => {
+      if (!alive) return;
 
-        if (conversationId && senderId && senderId !== currentUserId && activeChatIdRef.current !== conversationId) {
-          const nextUnread = {
+      if (event.kind === "message" && event.event === "INSERT" && event.conversationId) {
+        if (event.senderId && event.senderId !== currentProfile.id && activeChatId !== event.conversationId) {
+          unreadMapRef.current = {
             ...unreadMapRef.current,
-            [conversationId]: (unreadMapRef.current[conversationId] ?? 0) + 1,
+            [event.conversationId]: (unreadMapRef.current[event.conversationId] ?? 0) + 1,
           };
-          unreadMapRef.current = nextUnread;
-          writeUnreadMap(currentUserId, nextUnread);
-          setChats((prev) =>
-            prev.map((chat) =>
-              chat.id === conversationId ? { ...chat, unread: nextUnread[conversationId] } : chat,
-            ),
-          );
+          writeUnreadMap(currentProfile.id, unreadMapRef.current);
         }
+
+        scheduleRefresh(event.conversationId);
+        return;
       }
 
-      scheduleRefresh();
+      scheduleRefresh(event.conversationId ?? undefined);
     });
 
     return () => {
@@ -449,7 +441,7 @@ export default function App() {
       }
       unsubscribe();
     };
-  }, [authClient, currentProfile?.id, isAuthenticated, routeChatId]);
+  }, [activeChatId, authClient, currentProfile, isAuthenticated, refreshChatsWithUnread]);
 
   useEffect(() => {
     if (!isAuthenticated || !authClient || !activeChatId) {
@@ -462,13 +454,6 @@ export default function App() {
     let active = true;
     setLoadingMessages(true);
     setError(null);
-
-    if (currentProfile) {
-      const nextUnread = { ...unreadMapRef.current, [activeChatId]: 0 };
-      unreadMapRef.current = nextUnread;
-      writeUnreadMap(currentProfile.id, nextUnread);
-      setChats((prev) => prev.map((chat) => (chat.id === activeChatId ? { ...chat, unread: 0 } : chat)));
-    }
 
     const loadConversation = async () => {
       try {
@@ -491,8 +476,7 @@ export default function App() {
       void loadConversation();
       if (currentProfile) {
         void fetchChats(client, currentProfile.id).then((nextChats) => {
-          if (!active) return;
-          setChats(applyUnreadToChats(nextChats, unreadMapRef.current));
+          setChats(nextChats);
         });
       }
     });
@@ -501,7 +485,7 @@ export default function App() {
       active = false;
       unsubscribe();
     };
-  }, [activeChatId, authClient, currentProfile?.id, isAuthenticated]);
+  }, [activeChatId, authClient, currentProfile, isAuthenticated]);
 
   const filteredChats = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -540,6 +524,21 @@ export default function App() {
     () => messages.filter((message) => message.chatId === activeChatId),
     [messages, activeChatId],
   );
+
+  useEffect(() => {
+    if (!currentProfile?.id || !activeChatId) return;
+    if ((unreadMapRef.current[activeChatId] ?? 0) === 0) return;
+
+    unreadMapRef.current = {
+      ...unreadMapRef.current,
+      [activeChatId]: 0,
+    };
+    writeUnreadMap(currentProfile.id, unreadMapRef.current);
+
+    setChats((prev) =>
+      prev.map((chat) => (chat.id === activeChatId ? { ...chat, unread: 0 } : chat)),
+    );
+  }, [activeChatId, currentProfile?.id]);
 
   const activePeer = useMemo(() => {
     if (!activeChat?.peerId) return null;
@@ -622,15 +621,7 @@ export default function App() {
   }, [playingVoiceId, messages]);
 
   async function refreshChats(keepChatId?: string | null) {
-    if (!authClient || !currentProfile) return;
-    const client = authClient;
-    const nextChats = await fetchChats(client, currentProfile.id);
-    setChats(applyUnreadToChats(nextChats, unreadMapRef.current));
-    setActiveChatId((prev) => {
-      const target = keepChatId ?? prev;
-      if (target && nextChats.some((chat) => chat.id === target)) return target;
-      return nextChats[0]?.id ?? null;
-    });
+    await refreshChatsWithUnread(keepChatId);
   }
 
   async function handleSend() {

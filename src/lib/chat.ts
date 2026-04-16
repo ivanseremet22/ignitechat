@@ -35,6 +35,12 @@ type ReactionRow = {
   type: Reaction["type"];
 };
 
+type ChatListRealtimeEvent =
+  | { kind: "participant"; event: "INSERT" | "UPDATE" | "DELETE"; conversationId?: string | null; userId?: string | null }
+  | { kind: "conversation"; event: "INSERT" | "UPDATE" | "DELETE"; conversationId?: string | null }
+  | { kind: "message"; event: "INSERT" | "UPDATE" | "DELETE"; conversationId?: string | null; senderId?: string | null; messageId?: string | null };
+
+
 function getString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
@@ -627,10 +633,11 @@ export function subscribeToConversation(
   };
 }
 
+
 export function subscribeToChatList(
   client: SupabaseClient,
   currentUserId: string,
-  callback: (payload?: { table: string; eventType: string; new?: Record<string, unknown>; old?: Record<string, unknown> }) => void,
+  callback: (event: ChatListRealtimeEvent) => void,
 ): () => void {
   const channels: RealtimeChannel[] = [];
 
@@ -645,12 +652,18 @@ export function subscribeToChatList(
           table: "conversation_participants",
           filter: `user_id=eq.${currentUserId}`,
         },
-        (payload) => callback({
-          table: "conversation_participants",
-          eventType: payload.eventType,
-          new: payload.new as Record<string, unknown>,
-          old: payload.old as Record<string, unknown>,
-        }),
+        (payload) => {
+          const row = (payload.eventType === "DELETE" ? payload.old : payload.new) as
+            | Partial<ConversationParticipantRow>
+            | undefined;
+
+          callback({
+            kind: "participant",
+            event: payload.eventType as "INSERT" | "UPDATE" | "DELETE",
+            conversationId: row?.conversation_id ?? null,
+            userId: row?.user_id ?? null,
+          });
+        },
       )
       .subscribe();
 
@@ -665,12 +678,17 @@ export function subscribeToChatList(
           schema: "public",
           table: "conversations",
         },
-        (payload) => callback({
-          table: "conversations",
-          eventType: payload.eventType,
-          new: payload.new as Record<string, unknown>,
-          old: payload.old as Record<string, unknown>,
-        }),
+        (payload) => {
+          const row = (payload.eventType === "DELETE" ? payload.old : payload.new) as
+            | Partial<ConversationRow>
+            | undefined;
+
+          callback({
+            kind: "conversation",
+            event: payload.eventType as "INSERT" | "UPDATE" | "DELETE",
+            conversationId: row?.id ?? null,
+          });
+        },
       )
       .subscribe();
 
@@ -685,12 +703,19 @@ export function subscribeToChatList(
           schema: "public",
           table: "messages",
         },
-        (payload) => callback({
-          table: "messages",
-          eventType: payload.eventType,
-          new: payload.new as Record<string, unknown>,
-          old: payload.old as Record<string, unknown>,
-        }),
+        (payload) => {
+          const row = (payload.eventType === "DELETE" ? payload.old : payload.new) as
+            | Partial<MessageRow>
+            | undefined;
+
+          callback({
+            kind: "message",
+            event: payload.eventType as "INSERT" | "UPDATE" | "DELETE",
+            conversationId: row?.conversation_id ?? null,
+            senderId: row?.sender_id ?? null,
+            messageId: row?.id ?? null,
+          });
+        },
       )
       .subscribe();
 
