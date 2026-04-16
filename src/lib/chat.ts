@@ -328,24 +328,31 @@ export async function fetchChats(client: SupabaseClient, currentUserId: string):
     throw new Error(conversationsResult.error.message || "Не удалось загрузить чаты.");
   }
 
-  let participantsResult = await client
+  let participantsData: any[] = [];
+  
+  const participantsResult = await client
     .from("conversation_participants")
     .select("conversation_id,user_id,last_read_at")
     .in("conversation_id", conversationIds);
 
   if (participantsResult.error && isMissingSchemaError(participantsResult.error.message)) {
-    participantsResult = await client
+    const fallbackResult = await client
       .from("conversation_participants")
       .select("conversation_id,user_id")
       .in("conversation_id", conversationIds);
-  }
-
-  if (participantsResult.error) {
+      
+    if (fallbackResult.error) {
+      throw new Error(fallbackResult.error.message || "Не удалось загрузить участников.");
+    }
+    participantsData = fallbackResult.data ?? [];
+  } else if (participantsResult.error) {
     throw new Error(participantsResult.error.message || "Не удалось загрузить участников.");
+  } else {
+    participantsData = participantsResult.data ?? [];
   }
 
   const conversations = (conversationsResult.data ?? []) as ConversationRow[];
-  const allParticipants = ((participantsResult.data ?? []) as ConversationParticipantRow[]).filter((row) => isUuid(row.conversation_id) && isUuid(row.user_id));
+  const allParticipants = (participantsData as ConversationParticipantRow[]).filter((row) => isUuid(row.conversation_id) && isUuid(row.user_id));
 
   const otherUserIds = Array.from(
     new Set(
