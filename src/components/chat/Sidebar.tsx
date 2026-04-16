@@ -54,9 +54,9 @@ export default function Sidebar({
 
   return (
     <motion.aside
-      initial={isDesktop ? false : { x: "-100%" }}
+      initial={isDesktop ? undefined : { x: "-100%" }}
       animate={isDesktop ? { x: 0 } : { x: mobileSidebarOpen ? 0 : "-100%" }}
-      exit={isDesktop ? false : { x: "-100%" }}
+      exit={isDesktop ? undefined : { x: "-100%" }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
       className={`fixed inset-y-0 left-0 z-40 flex w-full flex-col border-r border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,249,241,0.94))] shadow-xl md:relative md:z-0 md:w-[320px] md:shadow-none lg:w-[360px] ${
         !isDesktop && !mobileSidebarOpen ? "pointer-events-none" : ""
