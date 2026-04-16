@@ -38,8 +38,8 @@ type ReactionRow = {
 export type ChatListRealtimeEvent =
   | { kind: "participant_insert"; conversationId: string }
   | { kind: "participant_delete"; conversationId: string }
-  | { kind: "message_insert"; conversationId: string; preview: string; createdAt: string }
-  | { kind: "message_update"; conversationId: string; preview: string; createdAt: string }
+  | { kind: "message_insert"; conversationId: string; preview: string; createdAt: string; senderId: string }
+  | { kind: "message_update"; conversationId: string; preview: string; createdAt: string; senderId: string }
   | { kind: "message_delete"; conversationId: string }
   | { kind: "conversation_update"; conversationId: string; preview: string | null; updatedAt: string | null };
 
@@ -823,6 +823,7 @@ export function subscribeToChatList(
             conversationId,
             preview,
             createdAt: getString(next.created_at, new Date().toISOString()),
+            senderId: getString(next.sender_id),
           });
         },
       )
@@ -844,6 +845,7 @@ export function subscribeToChatList(
             conversationId,
             preview,
             createdAt: getString(next.created_at, new Date().toISOString()),
+            senderId: getString(next.sender_id),
           });
         },
       )

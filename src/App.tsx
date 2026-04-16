@@ -87,9 +87,11 @@ function patchPresence(profile: UserProfile, onlineIds: Set<string>): UserProfil
 
 
 function sortChatsByUpdatedAt(items: Chat[]): Chat[] {
-  return [...items].sort(
-    (left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
-  );
+  return [...items].sort((left, right) => {
+    const pinnedDiff = Number(Boolean(right.pinned)) - Number(Boolean(left.pinned));
+    if (pinnedDiff !== 0) return pinnedDiff;
+    return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+  });
 }
 
 function upsertChat(items: Chat[], nextChat: Chat): Chat[] {
@@ -97,20 +99,48 @@ function upsertChat(items: Chat[], nextChat: Chat): Chat[] {
   return sortChatsByUpdatedAt([nextChat, ...filtered]);
 }
 
-function patchChatPreview(
+function patchChat(
   items: Chat[],
   conversationId: string,
-  preview: string,
-  updatedAt: string,
+  patch: Partial<Chat>,
 ): Chat[] {
   const existing = items.find((chat) => chat.id === conversationId);
   if (!existing) return items;
 
   return upsertChat(items, {
     ...existing,
+    ...patch,
+  });
+}
+
+function patchChatPreview(
+  items: Chat[],
+  conversationId: string,
+  preview: string,
+  updatedAt: string,
+  options?: {
+    unreadDelta?: number;
+    resetUnread?: boolean;
+  },
+): Chat[] {
+  const existing = items.find((chat) => chat.id === conversationId);
+  if (!existing) return items;
+
+  const unreadBase = typeof existing.unread === "number" ? existing.unread : 0;
+  const unread = options?.resetUnread
+    ? 0
+    : Math.max(0, unreadBase + (options?.unreadDelta ?? 0));
+
+  return upsertChat(items, {
+    ...existing,
     preview,
     updatedAt,
+    unread,
   });
+}
+
+function resetChatUnread(items: Chat[], conversationId: string): Chat[] {
+  return patchChat(items, conversationId, { unread: 0 });
 }
 
 
@@ -409,10 +439,21 @@ export default function App() {
         }
 
         if (event.kind === "message_insert" || event.kind === "message_update") {
+          const isOwnMessage = event.senderId === currentUserId;
+          const isOpenChat = activeChatId === event.conversationId;
           let didPatchExisting = false;
 
           setChats((prev) => {
-            const nextItems = patchChatPreview(prev, event.conversationId, event.preview, event.createdAt);
+            const nextItems = patchChatPreview(
+              prev,
+              event.conversationId,
+              event.preview,
+              event.createdAt,
+              {
+                unreadDelta: !isOwnMessage && !isOpenChat ? 1 : 0,
+                resetUnread: isOpenChat,
+              },
+            );
             didPatchExisting = nextItems !== prev;
             return nextItems;
           });
@@ -420,7 +461,14 @@ export default function App() {
           if (!didPatchExisting) {
             const nextChat = await fetchChatById(client, currentUserId, event.conversationId);
             if (!active || !nextChat) return;
-            setChats((prev) => upsertChat(prev, nextChat));
+            setChats((prev) =>
+              upsertChat(prev, {
+                ...nextChat,
+                unread: !isOwnMessage && !isOpenChat ? 1 : 0,
+                preview: event.preview,
+                updatedAt: event.createdAt,
+              }),
+            );
           }
           return;
         }
@@ -492,6 +540,7 @@ export default function App() {
         const nextMessages = await fetchMessages(client, activeChatId);
         if (!active) return;
         setMessages(nextMessages);
+        setChats((prev) => resetChatUnread(prev, activeChatId));
       } catch (err: unknown) {
         if (!active) return;
         setError(err instanceof Error ? err.message : "Не удалось загрузить сообщения.");
@@ -678,7 +727,11 @@ export default function App() {
       const preview = hasVoice ? "🎤 Голосовое сообщение" : trimmed || "Сообщение";
       const now = new Date().toISOString();
 
-      setChats((prev) => patchChatPreview(prev, activeChat.id, preview, now));
+      setChats((prev) =>
+        patchChatPreview(prev, activeChat.id, preview, now, {
+          resetUnread: true,
+        }),
+      );
       setDraft("");
       setReplyTo(null);
       setPendingVoiceSeconds(null);
@@ -724,7 +777,12 @@ export default function App() {
       const chatId = await createOrGetDirectConversation(client, currentProfile.id, userId);
       const nextChat = await fetchChatById(client, currentProfile.id, chatId);
       if (nextChat) {
-        setChats((prev) => upsertChat(prev, nextChat));
+        setChats((prev) =>
+          upsertChat(prev, {
+            ...nextChat,
+            unread: 0,
+          }),
+        );
       }
 
       const nextMessages = await fetchMessages(client, chatId);
@@ -766,6 +824,7 @@ export default function App() {
 
   function selectChat(chatId: string) {
     setActiveChatId(chatId);
+    setChats((prev) => resetChatUnread(prev, chatId));
     setReplyTo(null);
     navigate(`/chat/${chatId}`);
     if (!isDesktop) {
