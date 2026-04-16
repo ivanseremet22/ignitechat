@@ -500,6 +500,9 @@ export default function App() {
         if (event.kind === "message_insert" || event.kind === "message_update") {
           const isOwnMessage = event.senderId === currentUserId;
           const isOpenChat = activeChatId === event.conversationId;
+          const shouldIncrementUnread =
+            event.kind === "message_insert" && !isOwnMessage && !isOpenChat;
+
           let didPatchExisting = false;
 
           setChats((prev) => {
@@ -509,7 +512,7 @@ export default function App() {
               event.preview,
               event.createdAt,
               {
-                unreadDelta: !isOwnMessage && !isOpenChat ? 1 : 0,
+                unreadDelta: shouldIncrementUnread ? 1 : 0,
                 resetUnread: isOpenChat,
               },
             );
@@ -523,7 +526,7 @@ export default function App() {
             setChats((prev) =>
               upsertChat(prev, {
                 ...nextChat,
-                unread: !isOwnMessage && !isOpenChat ? 1 : 0,
+                unread: shouldIncrementUnread ? 1 : 0,
                 preview: event.preview,
                 updatedAt: event.createdAt,
               }),
