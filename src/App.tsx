@@ -76,6 +76,65 @@ function findMessageById(messages: Message[], id?: string) {
 }
 
 
+
+
+function createOptimisticMessage(input: {
+  chatId: string;
+  senderId: string;
+  text: string;
+  replyTo?: string | null;
+  voice?: number | null;
+}): Message {
+  return {
+    id: `temp-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    chatId: input.chatId,
+    senderId: input.senderId,
+    text: input.text,
+    createdAt: new Date().toISOString(),
+    replyTo: input.replyTo ?? undefined,
+    voice: input.voice ?? undefined,
+    voiceUrl: null,
+    reactions: [],
+    status: "sending",
+    seen: false,
+  };
+}
+
+function decorateMessagesWithDeliveryState(
+  items: Message[],
+  currentUserId: string,
+  peerOnline: boolean,
+  chatOpen: boolean,
+): Message[] {
+  let hasLaterIncoming = false;
+
+  return [...items]
+    .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
+    .map((message) => {
+      if (message.senderId !== currentUserId) {
+        hasLaterIncoming = true;
+        return {
+          ...message,
+          status: message.status === "error" ? "error" : "sent",
+          seen: false,
+        };
+      }
+
+      if (message.status === "sending" || message.status === "error") {
+        return message;
+      }
+
+      const seen = chatOpen && peerOnline;
+      const delivered = seen || peerOnline || hasLaterIncoming;
+
+      return {
+        ...message,
+        status: seen ? "seen" : delivered ? "delivered" : "sent",
+        seen,
+      };
+    });
+}
+
 function patchPresence(profile: UserProfile, onlineIds: Set<string>): UserProfile {
   const online = onlineIds.has(profile.id);
   return {
@@ -619,15 +678,29 @@ export default function App() {
     [activeChatId, chats],
   );
 
-  const activeMessages = useMemo(
-    () => messages.filter((message) => message.chatId === activeChatId),
-    [messages, activeChatId],
-  );
-
   const activePeer = useMemo(() => {
     if (!activeChat?.peerId) return null;
     return users.find((user) => user.id === activeChat.peerId) || null;
   }, [activeChat, users]);
+
+  const activeMessages = useMemo(() => {
+    const baseMessages = messages.filter((message) => message.chatId === activeChatId);
+
+    if (!currentProfile?.id) {
+      return baseMessages;
+    }
+
+    const peerOnline = activeChat?.peerId
+      ? Boolean(users.find((user) => user.id === activeChat.peerId)?.online)
+      : false;
+
+    return decorateMessagesWithDeliveryState(
+      baseMessages,
+      currentProfile.id,
+      peerOnline,
+      Boolean(activeChatId),
+    );
+  }, [activeChat?.peerId, activeChatId, currentProfile?.id, messages, users]);
 
   const replyPreview = useMemo(
     () => findMessageById(activeMessages, replyTo || undefined),
@@ -712,8 +785,23 @@ export default function App() {
     const hasVoice = pendingVoiceSeconds !== null;
     if (!trimmed && !hasVoice) return;
 
+    const preview = hasVoice ? "🎤 Голосовое сообщение" : trimmed || "Сообщение";
+    const optimisticMessage = createOptimisticMessage({
+      chatId: activeChat.id,
+      senderId: currentProfile.id,
+      text: trimmed,
+      replyTo,
+      voice: hasVoice ? pendingVoiceSeconds : null,
+    });
+
     setSending(true);
     setError(null);
+    setMessages((prev) => [...prev, optimisticMessage]);
+    setChats((prev) =>
+      patchChatPreview(prev, activeChat.id, preview, optimisticMessage.createdAt, {
+        resetUnread: true,
+      }),
+    );
 
     try {
       await sendMessageToConversation(client, {
@@ -724,14 +812,6 @@ export default function App() {
         voice: hasVoice ? pendingVoiceSeconds || undefined : undefined,
       });
 
-      const preview = hasVoice ? "🎤 Голосовое сообщение" : trimmed || "Сообщение";
-      const now = new Date().toISOString();
-
-      setChats((prev) =>
-        patchChatPreview(prev, activeChat.id, preview, now, {
-          resetUnread: true,
-        }),
-      );
       setDraft("");
       setReplyTo(null);
       setPendingVoiceSeconds(null);
@@ -743,6 +823,16 @@ export default function App() {
       const nextMessages = await fetchMessages(client, activeChat.id);
       setMessages(nextMessages);
     } catch (err: unknown) {
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === optimisticMessage.id
+            ? {
+                ...message,
+                status: "error",
+              }
+            : message,
+        ),
+      );
       setError(err instanceof Error ? err.message : "Не удалось отправить сообщение.");
     } finally {
       window.setTimeout(() => setSending(false), 220);
