@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { MessageSquarePlus, Search, UserRound, Video } from "lucide-react";
+import { MessageSquarePlus, Search, UserRound, Video, X } from "lucide-react";
 import AuthPage, { type AuthMode, type RegisterPayload, getInitials } from "./AuthPage";
 import type { Chat, EditableAuthProfile, Message, MessageStatus, Reaction, UserProfile } from "./chat-types";
 import Sidebar from "./components/chat/Sidebar";
 import MyProfilePage from "./components/chat/MyProfilePage";
 import ChatView from "./components/chat/ChatView";
 import PeerProfilePanel from "./components/chat/PeerProfilePanel";
+import GroupProfilePanel from "./components/chat/GroupProfilePanel";
+import { Button } from "./components/ui/button";
 import {
   authClient,
   hasSupabaseAuth,
@@ -20,7 +22,9 @@ import {
   syncProfileToSupabase,
 } from "./lib/auth";
 import {
+  createGroupConversation,
   createOrGetDirectConversation,
+  deleteMessage,
   fetchChats,
   fetchCurrentProfile,
   fetchMessages,
@@ -29,7 +33,9 @@ import {
   subscribeToChatList,
   subscribeToConversation,
   toggleMessageReaction,
+  updateMessage,
   updateReadStatus,
+  uploadAvatar,
   type ChatListRealtimeEvent,
   type ConversationRealtimeEvent,
 } from "./lib/chat";
@@ -201,6 +207,7 @@ export default function App() {
 
   const [currentProfile, setCurrentProfile] = useState<UserProfile | null>(null);
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [chats, setChats] = useState<Chat[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
@@ -214,7 +221,7 @@ export default function App() {
   const [pendingVoiceSeconds, setPendingVoiceSeconds] = useState<number | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [profileView, setProfileView] = useState<"peer" | "me">("peer");
+  const [profileView, setProfileView] = useState<"peer" | "me" | "group">("peer");
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [isTouch, setIsTouch] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
@@ -225,6 +232,9 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [myProfilePageOpen, setMyProfilePageOpen] = useState(false);
   const [editingMyProfile, setEditingMyProfile] = useState(false);
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [myProfileDraft, setMyProfileDraft] = useState<EditableAuthProfile>({
     name: "",
     username: "",
@@ -474,6 +484,53 @@ export default function App() {
     };
   }, [authRefreshKey, isAuthenticated]);
 
+
+  useEffect(() => {
+    if (!isAuthenticated || !authClient || !currentProfile) return;
+
+    const client = authClient;
+    const currentUserId = currentProfile.id;
+
+    const presenceChannel = client.channel("online-users", {
+      config: {
+        presence: {
+          key: currentUserId,
+        },
+      },
+    });
+
+    presenceChannel
+      .on("presence", { event: "sync" }, () => {
+        const state = presenceChannel.presenceState();
+        const onlineIds = new Set(Object.keys(state));
+        setOnlineUsers(onlineIds);
+      })
+      .on("presence", { event: "join" }, ({ newPresences }) => {
+        setOnlineUsers((prev) => {
+          const next = new Set(prev);
+          newPresences.forEach((p: any) => next.add(p.presence_ref));
+          return next;
+        });
+      })
+      .on("presence", { event: "leave" }, ({ leftPresences }) => {
+        setOnlineUsers((prev) => {
+          const next = new Set(prev);
+          leftPresences.forEach((p: any) => next.delete(p.presence_ref));
+          return next;
+        });
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await presenceChannel.track({
+            online_at: new Date().toISOString(),
+          });
+        }
+      });
+
+    return () => {
+      void client.removeChannel(presenceChannel);
+    };
+  }, [authClient, currentProfile?.id, isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated || !authClient || !currentProfile) return;
@@ -849,13 +906,17 @@ export default function App() {
       status: authProfile?.statusText || currentProfile.status,
       avatar: authProfile?.name ? getInitials(authProfile.name) : currentProfile.avatar,
       avatarUrl: authProfile?.avatarDataUrl || currentProfile.avatarUrl,
+      online: true,
     };
   }, [authProfile, currentProfile]);
 
-  const activeProfile = useMemo(
-    () => activePeer,
-    [activePeer],
-  );
+  const activeProfile = useMemo(() => {
+    if (!activePeer) return null;
+    return {
+      ...activePeer,
+      online: onlineUsers.has(activePeer.id),
+    };
+  }, [activePeer, onlineUsers]);
 
   useEffect(() => {
     if (!myProfile) return;
@@ -918,8 +979,39 @@ export default function App() {
     });
   }
 
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+
+  async function handleEditMessage(messageId: string, newText: string) {
+    if (!authClient) return;
+    try {
+      await updateMessage(authClient, messageId, newText);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, text: newText } : m)),
+      );
+      setEditingMessageId(null);
+      setDraft("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось изменить сообщение.");
+    }
+  }
+
+  async function handleDeleteMessage(messageId: string) {
+    if (!authClient) return;
+    try {
+      await deleteMessage(authClient, messageId);
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось удалить сообщение.");
+    }
+  }
+
   async function handleSend() {
     if (!currentProfile || !activeChat || !authClient) return;
+
+    if (editingMessageId) {
+      await handleEditMessage(editingMessageId, draft);
+      return;
+    }
 
     const client = authClient;
     const trimmed = draft.trim();
@@ -1128,6 +1220,8 @@ export default function App() {
     const file = event.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) return;
+    
+    setAvatarFile(file);
     const reader = new FileReader();
     reader.onload = () => {
       const result = typeof reader.result === "string" ? reader.result : "";
@@ -1138,31 +1232,45 @@ export default function App() {
   }
 
   async function saveMyProfile() {
+    if (!authClient || !currentProfile) return;
+    const client = authClient;
+
     const normalizedName = myProfileDraft.name.trim() || currentProfile?.name || "User";
     const normalizedUsername =
       myProfileDraft.username.trim().replace(/^@+/, "").replace(/\s+/g, "").toLowerCase() || "user";
 
-    const nextProfile: EditableAuthProfile = {
-      name: normalizedName,
-      username: normalizedUsername,
-      bio: myProfileDraft.bio.trim(),
-      email: myProfileDraft.email,
-      password: myProfileDraft.password,
-      phone: myProfileDraft.phone?.trim() || "",
-      location: myProfileDraft.location?.trim() || "",
-      statusText: myProfileDraft.statusText?.trim() || "",
-      avatarDataUrl: myProfileDraft.avatarDataUrl || "",
-    };
+    let finalAvatarUrl = myProfileDraft.avatarDataUrl || "";
 
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("ignite.auth", "1");
-      window.localStorage.setItem("ignite.profile", JSON.stringify(nextProfile));
+    try {
+      if (avatarFile) {
+        finalAvatarUrl = await uploadAvatar(client, currentProfile.id, avatarFile);
+      }
+
+      const nextProfile: EditableAuthProfile = {
+        name: normalizedName,
+        username: normalizedUsername,
+        bio: myProfileDraft.bio.trim(),
+        email: myProfileDraft.email,
+        password: myProfileDraft.password,
+        phone: myProfileDraft.phone?.trim() || "",
+        location: myProfileDraft.location?.trim() || "",
+        statusText: myProfileDraft.statusText?.trim() || "",
+        avatarDataUrl: finalAvatarUrl,
+      };
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("ignite.auth", "1");
+        window.localStorage.setItem("ignite.profile", JSON.stringify(nextProfile));
+      }
+
+      await syncProfileToSupabase(nextProfile);
+      setAuthProfile(nextProfile);
+      setEditingMyProfile(false);
+      setAvatarFile(null);
+      setAuthRefreshKey((prev) => prev + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось сохранить профиль.");
     }
-
-    await syncProfileToSupabase(nextProfile);
-    setAuthProfile(nextProfile);
-    setEditingMyProfile(false);
-    setAuthRefreshKey((prev) => prev + 1);
   }
 
   const handleAuthComplete = async (payload: RegisterPayload, mode: AuthMode) => {
@@ -1282,6 +1390,23 @@ export default function App() {
     );
   }
 
+  async function submitCreateGroup() {
+    if (!authClient || !currentProfile || !newGroupName.trim()) return;
+    
+    try {
+      const userIds = users.map((u) => u.id).concat(currentProfile.id);
+      const conversationId = await createGroupConversation(authClient, newGroupName, userIds);
+      setActiveChatId(conversationId);
+      setIsCreatingGroup(false);
+      setNewGroupName("");
+      setAuthRefreshKey((prev) => prev + 1);
+    } catch (err) {
+      console.error("Group creation failed:", err);
+      const message = (err as any)?.message || String(err) || "Не удалось создать группу.";
+      setError(`Ошибка создания группы: ${message}`);
+    }
+  }
+
   const provider = authClient ? "supabase" : "mock";
 
   return (
@@ -1315,8 +1440,67 @@ export default function App() {
           activeChatId={activeChatId}
           onSelectChat={selectChat}
           onStartChat={startChatWithUser}
+          onCreateGroup={() => setIsCreatingGroup(true)}
           formatTime={formatTime}
         />
+
+        <AnimatePresence>
+          {isCreatingGroup && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="relative w-full max-w-sm rounded-[32px] border border-white/70 bg-white/95 p-6 shadow-2xl"
+              >
+                <button
+                  onClick={() => {
+                    setIsCreatingGroup(false);
+                    setNewGroupName("");
+                  }}
+                  className="absolute right-4 top-4 rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+                <h3 className="text-xl font-semibold text-slate-900">Создать группу</h3>
+                <p className="mt-2 text-sm text-slate-500">Введите название для нового группового чата</p>
+                
+                <input
+                  autoFocus
+                  type="text"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void submitCreateGroup();
+                    if (e.key === "Escape") setIsCreatingGroup(false);
+                  }}
+                  placeholder="Название группы"
+                  className="mt-4 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-slate-900 placeholder:text-slate-400 focus:border-amber-400 focus:ring-0 outline-none"
+                />
+                
+                <div className="mt-6 flex gap-3">
+                  <Button 
+                    variant="ghost" 
+                    className="flex-1 rounded-2xl bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    onClick={() => {
+                      setIsCreatingGroup(false);
+                      setNewGroupName("");
+                    }}
+                  >
+                    Отмена
+                  </Button>
+                  <Button 
+                    className="flex-1 rounded-2xl bg-slate-900 text-white hover:bg-slate-800"
+                    onClick={() => void submitCreateGroup()}
+                    disabled={!newGroupName.trim()}
+                  >
+                    Создать
+                  </Button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
         <main className="chat-main-shell relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,#fbfcfe_0%,#f8fafc_38%,#f6f8fb_100%)] pb-[calc(68px+env(safe-area-inset-bottom))] md:pb-0">
           <div className="pointer-events-none absolute inset-0 opacity-90">
@@ -1360,42 +1544,85 @@ export default function App() {
               formatMessageMeta={formatMessageMeta}
             />
           ) : activeChat ? (
-            <ChatView
-              activeChat={activeChat}
-              activeProfile={activeProfile}
-              activePeer={activePeer}
-              myProfile={myProfile}
-              showTyping={false}
-              error={error}
-              loadingMessages={loadingMessages}
-              activeMessages={activeMessages}
-              currentUserId={currentProfile?.id || ""}
-              hoveredMsg={hoveredMsg}
-              setHoveredMsg={setHoveredMsg}
-              setReplyTo={setReplyTo}
-              addReaction={addReaction}
-              findMessageById={findMessageById}
-              toggleVoicePlay={toggleVoicePlay}
-              playingVoiceId={playingVoiceId}
-              isTouch={isTouch}
-              formatDayLabel={formatDayLabel}
-              sameDay={sameDay}
-              bottomRef={bottomRef}
-              replyPreview={replyPreview}
-              pendingVoiceSeconds={pendingVoiceSeconds}
-              setPendingVoiceSeconds={setPendingVoiceSeconds}
-              draft={draft}
-              setDraft={setDraft}
-              handleSend={handleSend}
-              sending={sending}
-              sendPulse={sendPulse}
-              recording={recording}
-              startRecord={startRecord}
-              stopRecord={stopRecord}
-              openMyProfile={openMyProfile}
-              openPeerProfile={openPeerProfile}
-              setMobileSidebarOpen={setMobileSidebarOpen}
-            />
+            <div className="flex flex-1 min-h-0 relative overflow-hidden">
+              <div className="flex flex-1 flex-col min-w-0 relative">
+                <ChatView
+                  activeChat={activeChat}
+                  activeProfile={activeProfile}
+                  activePeer={activePeer}
+                  myProfile={myProfile}
+                  showTyping={false}
+                  error={error}
+                  loadingMessages={loadingMessages}
+                  activeMessages={activeMessages}
+                  currentUserId={currentProfile?.id || ""}
+                  hoveredMsg={hoveredMsg}
+                  setHoveredMsg={setHoveredMsg}
+                  setReplyTo={setReplyTo}
+                  addReaction={addReaction}
+                  findMessageById={findMessageById}
+                  toggleVoicePlay={toggleVoicePlay}
+                  playingVoiceId={playingVoiceId}
+                  isTouch={isTouch}
+                  formatDayLabel={formatDayLabel}
+                  sameDay={sameDay}
+                  bottomRef={bottomRef}
+                  replyPreview={replyPreview}
+                  pendingVoiceSeconds={pendingVoiceSeconds}
+                  setPendingVoiceSeconds={setPendingVoiceSeconds}
+                  draft={draft}
+                  setDraft={setDraft}
+                  handleSend={handleSend}
+                  sending={sending}
+                  sendPulse={sendPulse}
+                  recording={recording}
+                  startRecord={startRecord}
+                  stopRecord={stopRecord}
+                  openMyProfile={() => setMyProfilePageOpen(true)}
+                  openPeerProfile={() => {
+                    if (activeChat?.isGroup) {
+                      setProfileView("group");
+                    } else {
+                      setProfileView("peer");
+                    }
+                    setProfileOpen(true);
+                  }}
+                  setMobileSidebarOpen={setMobileSidebarOpen}
+                  onEditMessage={(id, text) => {
+                    setEditingMessageId(id);
+                    setDraft(text);
+                  }}
+                  onDeleteMessage={handleDeleteMessage}
+                  editingMessageId={editingMessageId}
+                  setEditingMessageId={setEditingMessageId}
+                />
+              </div>
+
+              {profileOpen && profileView === "peer" && activeProfile && (
+                <PeerProfilePanel
+                  profile={activeProfile}
+                  sharedMessages={sharedMessages}
+                  isDesktop={isDesktop}
+                  open={profileOpen}
+                  onClose={() => setProfileOpen(false)}
+                  formatMessageMeta={formatMessageMeta}
+                />
+              )}
+
+              {profileOpen && profileView === "group" && activeChat && (
+                <GroupProfilePanel
+                  chat={activeChat}
+                  members={users.filter(u => u.id === activeChat.peerId || u.id === currentProfile?.id)} // For now, simple member logic
+                  isDesktop={isDesktop}
+                  open={profileOpen}
+                  onClose={() => setProfileOpen(false)}
+                  onTriggerAvatarPicker={() => {
+                    // Add logic for group avatar upload if needed later
+                    alert("Загрузка аватара группы скоро появится!");
+                  }}
+                />
+              )}
+            </div>
           ) : (
             <section className="relative z-10 flex min-h-0 flex-1 items-center justify-center px-4 py-6 md:px-6">
               <div className="w-full max-w-2xl rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-[0_24px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl md:p-8">

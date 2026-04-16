@@ -1,5 +1,6 @@
 import React, { memo, useMemo } from "react";
-import { Check, CheckCheck, Clock, AlertCircle, Flame, Heart, MessageCircle, Pause, Play, ThumbsUp } from "lucide-react";
+import { Check, CheckCheck, Clock, AlertCircle, Flame, Heart, MessageCircle, Pause, Play, ThumbsUp, Pencil, Trash2, Copy, Reply, Forward } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import type { Message, Reaction } from "../../chat-types";
 
 type MessageBubbleProps = {
@@ -11,6 +12,8 @@ type MessageBubbleProps = {
   setHoveredMsg: (id: string | null) => void;
   onReply: (id: string) => void;
   onReaction: (id: string, type: Reaction["type"]) => void;
+  onEdit?: (messageId: string, text: string) => void;
+  onDelete?: (messageId: string) => void;
   replyTarget: Message | null;
   onToggleVoicePlay: (id: string) => void;
   playingVoiceId: string | null;
@@ -40,12 +43,21 @@ function MessageBubble({
   setHoveredMsg,
   onReply,
   onReaction,
+  onEdit,
+  onDelete,
   replyTarget,
   onToggleVoicePlay,
   playingVoiceId,
   isTouch,
 }: MessageBubbleProps) {
   const mine = message.senderId === currentUserId;
+  const isMenuOpen = hoveredMsg === message.id;
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(message.text);
+    setHoveredMsg(null);
+  };
 
   const groupedWithPrev =
     !!previousMessage &&
@@ -89,13 +101,20 @@ function MessageBubble({
 
   return (
     <div
-      className={`${mine ? "flex justify-end" : "flex justify-start"} ${groupedWithPrev ? "mt-1" : "mt-4"}`}
-      onMouseEnter={() => !isTouch && setHoveredMsg(message.id)}
-      onMouseLeave={() => !isTouch && setHoveredMsg(null)}
-      onClick={() => isTouch && setHoveredMsg(showActions ? null : message.id)}
+      className={`${mine ? "flex justify-end" : "flex justify-start"} ${groupedWithPrev ? "mt-1" : "mt-4"} group relative ${message.reactions.length > 0 ? "mb-3" : ""}`}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setHoveredMsg(message.id);
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        setHoveredMsg(isMenuOpen ? null : message.id);
+      }}
     >
       <div
-        className={`message-bubble relative max-w-[min(98%,1120px)] px-3.5 py-3 md:max-w-[min(92%,1280px)] lg:max-w-[min(86%,1480px)] ${radiusClass} ${
+        className={`message-bubble relative max-w-[min(98%,1120px)] px-3.5 py-3 transition-transform duration-200 ${
+          isMenuOpen ? (mine ? "-translate-x-2" : "translate-x-2") : ""
+        } ${radiusClass} ${
           mine
             ? "border border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,244,223,0.98),rgba(255,239,205,0.94))] text-slate-900 shadow-[0_4px_10px_rgba(245,158,11,0.04)]"
             : "border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.94))] text-slate-800 shadow-[0_4px_10px_rgba(15,23,42,0.025)]"
@@ -153,73 +172,100 @@ function MessageBubble({
           <div className="text-[15px] leading-6">{message.text}</div>
         )}
 
-        <div className={"mt-1.5 flex justify-between gap-4 text-[11px] " + (mine ? "text-slate-500" : "text-slate-400")}>
+        <div className={"mt-1 flex justify-between gap-4 text-[11px] " + (mine ? "text-slate-500" : "text-slate-400")}>
           <div className="flex flex-wrap items-center gap-2">
             <span>{timeLabel}</span>
+            {message.updatedAt && <span className="opacity-70">(изм.)</span>}
             <StatusIcon />
           </div>
-
-          {message.reactions.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {message.reactions.map((reaction) => (
-                <div
-                  key={`${message.id}-${reaction.userId}-${reaction.type}`}
-                  className="rounded-full bg-white/75 px-2 py-1 text-xs shadow-sm ring-1 ring-black/5"
-                >
-                  {reactionEmoji(reaction.type)}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
-        {showActions && (
-          <div
-            className={
-              "absolute bottom-full mb-2 flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/95 p-1 shadow-[0_8px_18px_rgba(15,23,42,0.08)] " +
-              (mine ? "right-0" : "left-0")
-            }
-          >
-            <button
-              onClick={(event) => {
-                event.stopPropagation();
-                onReply(message.id);
-              }}
-              className="rounded-full p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
-            >
-              <MessageCircle size={14} />
-            </button>
-            <button
-              onClick={(event) => {
-                event.stopPropagation();
-                onReaction(message.id, "like");
-              }}
-              className="rounded-full p-1.5 text-blue-500 transition hover:bg-blue-50 hover:text-blue-600"
-            >
-              <ThumbsUp size={14} />
-            </button>
-            <button
-              onClick={(event) => {
-                event.stopPropagation();
-                onReaction(message.id, "love");
-              }}
-              className="rounded-full p-1.5 text-pink-500 transition hover:bg-pink-50 hover:text-pink-600"
-            >
-              <Heart size={14} />
-            </button>
-            <button
-              onClick={(event) => {
-                event.stopPropagation();
-                onReaction(message.id, "fire");
-              }}
-              className="rounded-full p-1.5 text-orange-500 transition hover:bg-orange-100 hover:text-orange-600"
-            >
-              <Flame size={14} />
-            </button>
+        {message.reactions.length > 0 && (
+          <div className={`absolute -bottom-2.5 ${mine ? "right-2" : "left-2"} z-10 flex flex-wrap items-center gap-1`}>
+            {message.reactions.map((reaction) => (
+              <div
+                key={`${message.id}-${reaction.userId}-${reaction.type}`}
+                className="rounded-full bg-white px-1.5 py-0.5 text-[13px] shadow-sm ring-1 ring-black/5 flex items-center justify-center min-w-[24px] h-[24px]"
+              >
+                {reactionEmoji(reaction.type)}
+              </div>
+            ))}
           </div>
         )}
+
+        <AnimatePresence>
+          {isMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.8, y: 10 }}
+              className={`absolute bottom-full z-[60] mb-2 flex flex-col gap-1 rounded-2xl border border-white/40 bg-white/80 p-1.5 shadow-[0_20px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl ${
+                mine ? "right-0 origin-bottom-right" : "left-0 origin-bottom-left"
+              }`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-1 border-b border-slate-100 pb-1.5 mb-1 px-1">
+                {["like", "love", "fire"].map((type) => (
+                  <button
+                    key={type}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onReaction(message.id, type as any);
+                      setHoveredMsg(null);
+                    }}
+                    className="flex h-9 w-9 items-center justify-center rounded-xl transition hover:bg-amber-100/50 hover:scale-110 active:scale-95"
+                  >
+                    <span className="text-lg">{reactionEmoji(type as any)}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-col gap-0.5">
+                <MenuAction
+                  icon={<Reply size={16} />}
+                  label="Ответить"
+                  onClick={(e: any) => { e.stopPropagation(); onReply(message.id); setHoveredMsg(null); }}
+                />
+                <MenuAction
+                  icon={<Copy size={16} />}
+                  label="Копировать"
+                  onClick={handleCopy}
+                />
+                {mine && (
+                  <MenuAction
+                    icon={<Pencil size={16} />}
+                    label="Изменить"
+                    onClick={(e: any) => { e.stopPropagation(); onEdit?.(message.id, message.text); setHoveredMsg(null); }}
+                  />
+                )}
+                {mine && (
+                  <MenuAction
+                    icon={<Trash2 size={16} className="text-red-500" />}
+                    label="Удалить"
+                    danger
+                    onClick={(e: any) => { e.stopPropagation(); onDelete?.(message.id); setHoveredMsg(null); }}
+                  />
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
+  );
+}
+
+function MenuAction({ icon, label, onClick, danger }: { icon: any, label: string, onClick: any, danger?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center justify-between gap-8 rounded-xl px-3 py-2 text-sm transition ${
+        danger ? "text-red-500 hover:bg-red-50" : "text-slate-700 hover:bg-slate-100/80"
+      }`}
+    >
+      <span className="font-medium">{label}</span>
+      <span className="opacity-60">{icon}</span>
+    </button>
   );
 }
 

@@ -11,12 +11,16 @@ type ConversationRow = {
   id: string;
   updated_at: string | null;
   last_message_preview: string | null;
+  is_group?: boolean;
+  name?: string | null;
+  avatar_url?: string | null;
 };
 
 type ConversationParticipantRow = {
   conversation_id: string;
   user_id: string;
   last_read_at?: string | null;
+  is_pinned?: boolean;
 };
 
 type MessageRow = {
@@ -25,6 +29,7 @@ type MessageRow = {
   sender_id: string;
   text: string | null;
   created_at: string;
+  updated_at?: string | null;
   reply_to: string | null;
   voice_duration: number | null;
   voice_url: string | null;
@@ -185,6 +190,7 @@ function mapMessages(rows: MessageRow[], reactions: ReactionRow[]): Message[] {
       senderId: row.sender_id,
       text: row.text ?? "",
       createdAt: row.created_at,
+      updatedAt: row.updated_at ?? undefined,
       replyTo: row.reply_to ?? undefined,
       voice: row.voice_duration ?? undefined,
       voiceUrl: row.voice_url,
@@ -296,7 +302,7 @@ export async function fetchUsers(client: SupabaseClient, currentUserId: string):
 export async function fetchChats(client: SupabaseClient, currentUserId: string): Promise<Chat[]> {
   const participantResult = await client
     .from("conversation_participants")
-    .select("conversation_id,user_id")
+    .select("conversation_id,user_id,is_pinned")
     .eq("user_id", currentUserId);
 
   if (participantResult.error) {
@@ -316,7 +322,7 @@ export async function fetchChats(client: SupabaseClient, currentUserId: string):
 
   const conversationsResult = await client
     .from("conversations")
-    .select("id,updated_at,last_message_preview")
+    .select("id,updated_at,last_message_preview,is_group,name,avatar_url")
     .in("id", conversationIds)
     .order("updated_at", { ascending: false });
 
@@ -332,7 +338,7 @@ export async function fetchChats(client: SupabaseClient, currentUserId: string):
   
   const participantsResult = await client
     .from("conversation_participants")
-    .select("conversation_id,user_id,last_read_at")
+    .select("conversation_id,user_id,last_read_at,is_pinned")
     .in("conversation_id", conversationIds);
 
   if (participantsResult.error && isMissingSchemaError(participantsResult.error.message)) {
@@ -377,6 +383,23 @@ export async function fetchChats(client: SupabaseClient, currentUserId: string):
   }
 
   return conversations.map((conversation) => {
+    const myPart = myParticipants.find(p => p.conversation_id === conversation.id);
+    
+    if (conversation.is_group) {
+      const title = conversation.name || "Групповой чат";
+      return {
+        id: conversation.id,
+        title,
+        avatar: getInitials(title),
+        avatarUrl: conversation.avatar_url || undefined,
+        preview: conversation.last_message_preview?.trim() || "Сообщений пока нет",
+        updatedAt: conversation.updated_at || new Date().toISOString(),
+        unread: 0,
+        pinned: myPart?.is_pinned || false,
+        isGroup: true,
+      };
+    }
+
     const peerParticipant = allParticipants.find(
       (participant) =>
         participant.conversation_id === conversation.id && participant.user_id !== currentUserId,
@@ -389,12 +412,14 @@ export async function fetchChats(client: SupabaseClient, currentUserId: string):
       id: conversation.id,
       title,
       avatar: peerProfile?.avatar || getInitials(title),
+      avatarUrl: peerProfile?.avatarUrl,
       preview: conversation.last_message_preview?.trim() || "Сообщений пока нет",
       updatedAt: conversation.updated_at || new Date().toISOString(),
       unread: 0,
-      pinned: false,
+      pinned: myPart?.is_pinned || false,
       peerId: peerProfile?.id,
       peerReadAt: peerParticipant?.last_read_at,
+      isGroup: false,
     };
   });
 }
@@ -406,7 +431,7 @@ export async function fetchMessages(client: SupabaseClient, conversationId: stri
 
   const messagesResult = await client
     .from("messages")
-    .select("id,conversation_id,sender_id,text,created_at,reply_to,voice_duration,voice_url")
+    .select("id,conversation_id,sender_id,text,created_at,updated_at,reply_to,voice_duration,voice_url")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
 
@@ -718,6 +743,154 @@ export async function updateReadStatus(
     }
     console.error("updateReadStatus error:", error);
   }
+}
+
+// --- STORAGE ---
+
+export async function uploadAvatar(
+  client: SupabaseClient,
+  userId: string,
+  file: File | Blob,
+): Promise<string> {
+  const fileExt = "jpg"; // For simplicity or from file.name
+  const filePath = `${userId}/avatar_${Date.now()}.${fileExt}`;
+
+  const { error: uploadError } = await client.storage
+    .from("avatars")
+    .upload(filePath, file, { upsert: true });
+
+  if (uploadError) throw uploadError;
+
+  const { data } = client.storage.from("avatars").getPublicUrl(filePath);
+  return data.publicUrl;
+}
+
+export async function uploadMessageFile(
+  client: SupabaseClient,
+  conversationId: string,
+  file: File | Blob,
+): Promise<string> {
+  const fileExt = "bin"; 
+  const filePath = `${conversationId}/${createClientSideUuid()}.${fileExt}`;
+
+  const { error: uploadError } = await client.storage
+    .from("messages")
+    .upload(filePath, file);
+
+  if (uploadError) throw uploadError;
+
+  const { data } = client.storage.from("messages").getPublicUrl(filePath);
+  return data.publicUrl;
+}
+
+// --- MESSAGE ACTIONS ---
+
+export async function updateMessage(
+  client: SupabaseClient,
+  messageId: string,
+  text: string,
+): Promise<void> {
+  const { error } = await client
+    .from("messages")
+    .update({ text, updated_at: new Date().toISOString() })
+    .eq("id", messageId);
+
+  if (error) throw error;
+}
+
+export async function deleteMessage(
+  client: SupabaseClient,
+  messageId: string,
+): Promise<void> {
+  const { error } = await client
+    .from("messages")
+    .delete()
+    .eq("id", messageId);
+
+  if (error) throw error;
+}
+
+// --- GROUP CHATS ---
+
+export async function createGroupConversation(
+  client: SupabaseClient,
+  name: string,
+  userIds: string[],
+  avatarUrl?: string,
+): Promise<string> {
+  const conversationId = createClientSideUuid();
+  
+  // 1. Get current user
+  const { data: { user } } = await client.auth.getUser();
+  if (!user) throw new Error("Не авторизован.");
+
+  // 2. Validate and clean IDs
+  const validIds = Array.from(new Set([user.id, ...userIds])).filter(isUuid);
+
+  // 3. Create conversation
+  const { error: convError } = await client.from("conversations").insert({
+    id: conversationId,
+    is_group: true,
+    name,
+    avatar_url: avatarUrl || null,
+  });
+
+  if (convError) {
+    console.error("Conversation insert error:", convError);
+    throw new Error(convError.message);
+  }
+
+  // 4. Insert participants
+  const { error: meError } = await client
+    .from("conversation_participants")
+    .insert({ conversation_id: conversationId, user_id: user.id });
+
+  if (meError) {
+    console.error("Me participant insert error:", meError);
+    throw new Error(meError.message);
+  }
+
+  const others = validIds.filter(id => id !== user.id).map(id => ({
+    conversation_id: conversationId,
+    user_id: id
+  }));
+
+  if (others.length > 0) {
+    const { error: othersError } = await client
+      .from("conversation_participants")
+      .insert(others);
+
+    if (othersError) {
+      console.warn("Could not add all participants to group:", othersError);
+    }
+  }
+
+  return conversationId;
+}
+
+// --- SEARCH ---
+
+export async function searchMessages(
+  client: SupabaseClient,
+  query: string,
+  conversationId?: string,
+): Promise<Message[]> {
+  let builder = client
+    .from("messages")
+    .select("id,conversation_id,sender_id,text,created_at,reply_to,voice_duration,voice_url")
+    .ilike("text", `%${query}%`)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (conversationId) {
+    builder = builder.eq("conversation_id", conversationId);
+  }
+
+  const { data, error } = await builder;
+
+  if (error) throw error;
+
+  return mapMessages((data ?? []) as MessageRow[], []);
 }
 
 export function subscribeToChatList(

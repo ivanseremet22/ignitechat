@@ -55,6 +55,10 @@ type ChatViewProps = {
   openMyProfile: () => void;
   openPeerProfile: () => void;
   setMobileSidebarOpen: (value: boolean) => void;
+  onEditMessage: (messageId: string, text: string) => void;
+  onDeleteMessage: (messageId: string) => void;
+  editingMessageId: string | null;
+  setEditingMessageId: (id: string | null) => void;
 };
 
 export default function ChatView({
@@ -92,6 +96,10 @@ export default function ChatView({
   openMyProfile,
   openPeerProfile,
   setMobileSidebarOpen,
+  onEditMessage,
+  onDeleteMessage,
+  editingMessageId,
+  setEditingMessageId,
 }: ChatViewProps) {
   const messageById = React.useMemo(
     () => new Map(activeMessages.map((message) => [message.id, message])),
@@ -218,6 +226,8 @@ export default function ChatView({
                     setHoveredMsg={setHoveredMsg}
                     onReply={setReplyTo}
                     onReaction={addReaction}
+                    onEdit={onEditMessage}
+                    onDelete={onDeleteMessage}
                     replyTarget={message.replyTo ? messageById.get(message.replyTo) ?? null : null}
                     onToggleVoicePlay={toggleVoicePlay}
                     playingVoiceId={playingVoiceId}
@@ -235,9 +245,30 @@ export default function ChatView({
         className="composer-shell mobile-no-blur relative z-10 bg-[linear-gradient(0deg,rgba(255,255,255,0.99),rgba(255,249,241,0.92)_58%,rgba(250,251,253,0.96))] px-2.5 py-3 md:px-4 lg:px-6"
         style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
       >
-        {(replyPreview || pendingVoiceSeconds !== null) && (
+        {(replyPreview || pendingVoiceSeconds !== null || editingMessageId) && (
           <div className="mb-3 rounded-[26px] border border-slate-200/80 bg-white/90 px-4 py-3 mobile-lite-shadow shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
-            {replyPreview && (
+            {editingMessageId && (
+              <div className="flex items-start gap-3">
+                <div className="mt-1 h-10 w-1 rounded-full bg-gradient-to-b from-blue-400 to-indigo-300" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Редактирование</div>
+                  <div className="mt-1 truncate text-sm text-slate-700">
+                    {findMessageById(activeMessages, editingMessageId)?.text || "Сообщение"}
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setEditingMessageId(null);
+                    setDraft("");
+                  }}
+                  className="rounded-full p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+            
+            {replyPreview && !editingMessageId && (
               <div className="flex items-start gap-3">
                 <div className="mt-1 h-10 w-1 rounded-full bg-gradient-to-b from-amber-400 to-orange-300" />
                 <div className="min-w-0 flex-1">

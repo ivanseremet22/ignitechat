@@ -22,6 +22,7 @@ type SidebarProps = {
   activeChatId: string | null;
   onSelectChat: (chatId: string) => void;
   onStartChat: (userId: string) => void | Promise<void>;
+  onCreateGroup: () => void;
   formatTime: (date: string) => string;
 };
 
@@ -41,6 +42,7 @@ export default function Sidebar({
   activeChatId,
   onSelectChat,
   onStartChat,
+  onCreateGroup,
   formatTime,
 }: SidebarProps) {
   const hasSearch = search.trim().length > 0;
@@ -69,14 +71,25 @@ export default function Sidebar({
               <div className="text-xs text-slate-500">Реальные пользователи и реальные чаты</div>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 md:hidden"
-            onClick={onCloseMobile}
-          >
-            <X className="h-5 w-5" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200"
+              onClick={onCreateGroup}
+              title="Создать группу"
+            >
+              <MessageSquarePlus className="h-5 w-5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 md:hidden"
+              onClick={onCloseMobile}
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
 
         <div className="mb-4 flex items-center gap-2 rounded-2xl border border-slate-200/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,250,240,0.84))] px-3 py-2 text-xs text-slate-600 mobile-lite-shadow shadow-[0_8px_16px_rgba(15,23,42,0.03)]">

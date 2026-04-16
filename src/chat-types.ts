@@ -44,6 +44,7 @@ export type Message = {
   senderId: string;
   text: string;
   createdAt: string;
+  updatedAt?: string;
   reactions: Reaction[];
   replyTo?: string;
   voice?: number;
@@ -62,4 +63,6 @@ export type Chat = {
   pinned?: boolean;
   unread?: number;
   updatedAt: string;
+  isGroup?: boolean;
+  avatarUrl?: string;
 };
