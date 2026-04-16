@@ -508,7 +508,7 @@ export default function App() {
       if (event.kind === "message" && (event.event === "INSERT" || event.event === "UPDATE")) {
         const payload = coercePayloadRecord(event.payload);
         const nextRow =
-          event.event === "DELETE"
+          (event.event as string) === "DELETE"
             ? coercePayloadRecord(payload.old)
             : coercePayloadRecord(payload.new);
 
@@ -534,7 +534,7 @@ export default function App() {
             found = true;
 
             let unread = chat.unread ?? 0;
-            if (event.event === "INSERT" && !isMine && !isActiveChat) {
+            if ((event.event as string) === "INSERT" && !isMine && !isActiveChat) {
               unread = unread + 1;
               unreadMapRef.current = {
                 ...unreadMapRef.current,
