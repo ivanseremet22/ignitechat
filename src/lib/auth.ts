@@ -163,6 +163,14 @@ async function upsertProfile(user: User, profile: EditableAuthProfile) {
 
   if (error) {
     console.error("Profile upsert error details:", error);
+    
+    // Если ошибка RLS (Permission Denied), возможно пользователь еще не подтвердил почту.
+    // Так как у нас есть триггер в БД, который создаст профиль, мы можем просто залогировать это.
+    if (error.code === "42501" || error.message?.toLowerCase().includes("permission denied")) {
+      console.warn("Profile upsert failed due to RLS. Relying on DB trigger.");
+      return;
+    }
+
     // Если ошибка в уникальности username, пробуем добавить суффикс
     if (error.code === "23505" && error.message.includes("username")) {
       updateData.username = `${baseUsername}_${Math.floor(Math.random() * 1000)}`;
@@ -212,53 +220,79 @@ export async function syncProfileToSupabase(profile: EditableAuthProfile) {
   }
 }
 
-export async function sendPhoneOtp(phone: string) {
-  const client = requireAuthClient();
-  const { error } = await client.auth.signInWithOtp({
-    phone: phone.trim(),
-  });
-  if (error) throw normalizeAuthError(error);
-}
-
-export async function verifyPhoneOtp(phone: string, token: string) {
-  const client = requireAuthClient();
-  const { data, error } = await client.auth.verifyOtp({
-    phone: phone.trim(),
-    token: token.trim(),
-    type: "sms",
-  });
-
-  if (error) throw normalizeAuthError(error);
-  if (!data.user) throw new Error("Не удалось выполнить вход.");
-
-  const existingProfile = await fetchProfileByUserId(data.user.id);
-  
+export async function submitAuth(payload: RegisterPayload, mode: AuthSubmitMode) {
   const profile = normalizeProfile({
-    name: existingProfile?.name || "",
-    username: existingProfile?.username || "",
-    phone: phone.trim(),
-    email: data.user.email || "",
+    name: payload.name,
+    username: payload.username,
+    bio: payload.bio,
+    email: payload.email,
+    password: payload.password,
+    phone: payload.phone,
+    location: payload.location,
+    statusText: payload.statusText,
+    avatarDataUrl: payload.avatarDataUrl,
   });
 
-  if (existingProfile) {
+  const client = requireAuthClient();
+
+  try {
+    if (mode === "register") {
+      const { data, error } = await client.auth.signUp({
+        email: profile.email,
+        password: profile.password,
+        options: {
+          data: {
+            name: profile.name,
+            username: profile.username,
+            bio: profile.bio,
+            phone: profile.phone,
+            location: profile.location,
+            statusText: profile.statusText,
+            avatarDataUrl: profile.avatarDataUrl,
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      const user = data.user;
+      if (!user) {
+        throw new Error("Не удалось создать пользователя.");
+      }
+
+      await upsertProfile(user, profile);
+      safeStorageSet(AUTH_STORAGE_KEY, "1");
+      safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+      return profile;
+    }
+
+    const { data, error } = await client.auth.signInWithPassword({
+      email: profile.email,
+      password: profile.password,
+    });
+
+    if (error) throw error;
+    if (!data.user) throw new Error("Не удалось выполнить вход.");
+
+    const existingProfile = await fetchProfileByUserId(data.user.id);
+
+    const mergedProfile = normalizeProfile({
+      ...profile,
+      name: existingProfile?.name || profile.name,
+      username: existingProfile?.username || profile.username,
+      bio: existingProfile?.bio || profile.bio,
+      phone: existingProfile?.phone || profile.phone,
+      location: existingProfile?.location || profile.location,
+      statusText: existingProfile?.status || profile.statusText,
+      avatarDataUrl: existingProfile?.avatar_url || profile.avatarDataUrl,
+    });
+
     safeStorageSet(AUTH_STORAGE_KEY, "1");
-    safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+    safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(mergedProfile));
+    return mergedProfile;
+  } catch (error) {
+    throw normalizeAuthError(error);
   }
-
-  return { user: data.user, isNewUser: !existingProfile };
-}
-
-export async function completePhoneRegistration(user: User, payload: Partial<EditableAuthProfile>) {
-  const profile = normalizeProfile({
-    ...payload,
-    phone: user.phone || payload.phone || "",
-    email: user.email || payload.email || "",
-  });
-
-  await upsertProfile(user, profile);
-  safeStorageSet(AUTH_STORAGE_KEY, "1");
-  safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(profile));
-  return profile;
 }
 
 export async function signOutApp() {
