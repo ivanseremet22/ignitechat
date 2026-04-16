@@ -505,9 +505,13 @@ export default function App() {
     const unsubscribe = subscribeToChatList(client, currentUserId, (event: ChatListRealtimeEvent) => {
       if (!alive) return;
 
-      if (event.kind === "message" && event.event === "INSERT") {
+      if (event.kind === "message" && (event.event === "INSERT" || event.event === "UPDATE")) {
         const payload = coercePayloadRecord(event.payload);
-        const nextRow = coercePayloadRecord(payload.new);
+        const nextRow =
+          event.event === "DELETE"
+            ? coercePayloadRecord(payload.old)
+            : coercePayloadRecord(payload.new);
+
         const conversationId = getStringField(nextRow, "conversation_id");
         const senderId = getStringField(nextRow, "sender_id");
         const createdAt = getStringField(nextRow, "created_at") || new Date().toISOString();
@@ -530,7 +534,7 @@ export default function App() {
             found = true;
 
             let unread = chat.unread ?? 0;
-            if (!isMine && !isActiveChat) {
+            if (event.event === "INSERT" && !isMine && !isActiveChat) {
               unread = unread + 1;
               unreadMapRef.current = {
                 ...unreadMapRef.current,
@@ -557,12 +561,14 @@ export default function App() {
             };
           });
 
-          return found ? sortChatsByActivity(nextChats) : prev;
+          if (found) {
+            return sortChatsByActivity(nextChats);
+          } else if (event.event === "INSERT") {
+            // Если чат не найден и это новое сообщение, обновляем список целиком
+            void refreshFromServer(activeChatIdRef.current);
+          }
+          return prev;
         });
-
-        if (!found) {
-          void refreshFromServer(conversationId);
-        }
 
         return;
       }
@@ -645,6 +651,15 @@ export default function App() {
       .subscribe();
 
     const broadcastRead = async (readAt: string) => {
+      // Обновляем локально только если время больше текущего
+      const previous = peerReadCursorRef.current[activeChatId];
+      if (previous && new Date(previous).getTime() >= new Date(readAt).getTime()) {
+        // Если это наше сообщение (или мы его уже пометили прочитанным), 
+        // всё равно очищаем unread, но не шлем broadcast старого времени
+        clearUnreadForActiveChat();
+        return;
+      }
+
       clearUnreadForActiveChat();
       try {
         // Обновляем в БД для персистентности
@@ -672,8 +687,11 @@ export default function App() {
 
         const peerReadAt = peerReadCursorRef.current[activeChatId];
         const nextMessages = applyPeerReadCursor(fetchedMessages, currentUserId, peerReadAt);
+        
+        // Сначала обновляем сообщения
         setMessages(nextMessages);
 
+        // Затем проверяем наличие новых сообщений от собеседника для отправки статуса "прочитано"
         const peerMessages = nextMessages.filter((message) => message.senderId !== currentUserId);
         const latestPeerMessage = peerMessages[peerMessages.length - 1];
 
@@ -735,6 +753,9 @@ export default function App() {
 
           if (event.event === "INSERT" && senderId && senderId !== currentUserId) {
             void broadcastRead(createdAt);
+          } else if (event.event === "INSERT" && senderId === currentUserId) {
+            // Если мы сами отправили сообщение с другого устройства, убираем unread
+            clearUnreadForActiveChat();
           }
 
           return;
