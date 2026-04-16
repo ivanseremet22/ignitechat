@@ -22,7 +22,7 @@ import {
 } from "./lib/auth";
 import {
   createGroupConversation,
-  createOrGetDirectConversation,
+  getOrCreateConversation,
   deleteMessage,
   fetchChats,
   fetchCurrentProfile,
@@ -1107,7 +1107,7 @@ export default function App() {
     setError(null);
 
     try {
-      const chatId = await createOrGetDirectConversation(client, currentProfile.id, userId);
+      const chatId = await getOrCreateConversation(client, currentProfile.id, userId);
       await refreshChats(chatId);
       const nextMessages = await fetchMessages(client, chatId);
       setMessages(nextMessages);
