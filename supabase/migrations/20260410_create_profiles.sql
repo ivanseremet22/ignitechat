@@ -137,6 +137,25 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
+-- IMPROVE RELIABILITY: Update foreign keys to reference auth.users(id) instead of profiles(id)
+-- This ensures that as long as a user is authenticated, they can participate in chats,
+-- even if their profile record is temporarily missing or failing to sync.
+
+alter table if exists conversation_participants 
+  drop constraint if exists conversation_participants_user_id_fkey,
+  add constraint conversation_participants_user_id_fkey 
+    foreign key (user_id) references auth.users(id) on delete cascade;
+
+alter table if exists messages
+  drop constraint if exists messages_sender_id_fkey,
+  add constraint messages_sender_id_fkey 
+    foreign key (sender_id) references auth.users(id) on delete cascade;
+
+alter table if exists message_reactions
+  drop constraint if exists message_reactions_user_id_fkey,
+  add constraint message_reactions_user_id_fkey 
+    foreign key (user_id) references auth.users(id) on delete cascade;
+
 -- Backfill existing users who might be missing profiles
 insert into public.profiles (id, username, name, email, avatar_url, bio, phone, location, status)
 select 

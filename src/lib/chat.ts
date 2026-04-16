@@ -491,7 +491,46 @@ export async function fetchMessages(client: SupabaseClient, conversationId: stri
   return mapMessages(messageRows, reactionRows);
 }
 
-export async function createOrGetDirectConversation(
+async function ensureProfileExists(client: SupabaseClient, userId: string): Promise<void> {
+  if (!isUuid(userId)) return;
+
+  const { data, error } = await client
+    .from("profiles")
+    .select("id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Error checking profile existence:", error);
+    return;
+  }
+
+  if (!data) {
+    console.log("Profile missing for user", userId, "- attempting to create...");
+    // Получаем данные из auth.users если это текущий пользователь, иначе используем заглушку
+    const { data: { user } } = await client.auth.getUser();
+    
+    let username = `user_${userId.slice(0, 6)}`;
+    let name = username;
+    let email = null;
+
+    if (user && user.id === userId) {
+      username = user.email ? user.email.split("@")[0] : username;
+      name = user.user_metadata?.name || username;
+      email = user.email || null;
+    }
+
+    await client.from("profiles").upsert({
+      id: userId,
+      username: username.toLowerCase(),
+      name: name,
+      email: email,
+      updated_at: new Date().toISOString()
+    }, { onConflict: "id" });
+  }
+}
+
+export async function getOrCreateConversation(
   client: SupabaseClient,
   currentUserId: string,
   otherUserId: string,
@@ -499,6 +538,13 @@ export async function createOrGetDirectConversation(
   if (!isUuid(currentUserId) || !isUuid(otherUserId)) {
     throw new Error("Некорректный ID пользователя. Один из профилей создан со старым не-uuid id.");
   }
+
+  // ГАРАНТИРУЕМ наличие профилей перед вставкой в conversation_participants
+  // Это предотвращает ошибку внешнего ключа (FK constraint)
+  await Promise.all([
+    ensureProfileExists(client, currentUserId),
+    ensureProfileExists(client, otherUserId)
+  ]);
 
   const mineResult = await client
     .from("conversation_participants")
