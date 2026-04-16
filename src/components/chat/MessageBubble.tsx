@@ -77,12 +77,12 @@ function MessageBubble({
         groupedWithNext ? "rounded-bl-xl" : "rounded-bl-[22px]"
       } rounded-tr-[22px] rounded-br-[22px]`;
 
-  const statusTone = mine
-    ? message.status === "error"
-      ? "bg-rose-400 shadow-[0_0_0_1px_rgba(251,113,133,0.18),0_0_14px_rgba(251,113,133,0.32)]"
-      : message.status === "seen" || message.seen
-        ? "bg-sky-400 shadow-[0_0_0_1px_rgba(56,189,248,0.16),0_0_16px_rgba(56,189,248,0.3)]"
-        : "bg-rose-300 shadow-[0_0_0_1px_rgba(251,113,133,0.16),0_0_14px_rgba(251,113,133,0.24)]"
+  const indicatorTone = mine
+    ? message.status === "seen" || message.seen
+      ? "message-status-indicator message-status-read"
+      : message.status === "error"
+        ? "message-status-indicator message-status-error"
+        : "message-status-indicator message-status-sent"
     : "";
 
   const showActions = hoveredMsg === message.id;
@@ -156,7 +156,11 @@ function MessageBubble({
         <div className={"mt-1.5 flex justify-between gap-4 text-[11px] " + (mine ? "text-slate-500" : "text-slate-400")}>
           <div className="flex flex-wrap items-center gap-2">
             <span>{timeLabel}</span>
-            {mine && <span className={`message-status-indicator ${statusTone}`} />}
+            {mine && (
+              <span className="inline-flex items-center gap-1.5">
+                <span className={indicatorTone} />
+              </span>
+            )}
           </div>
 
           {message.reactions.length > 0 && (

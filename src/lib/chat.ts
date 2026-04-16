@@ -35,6 +35,35 @@ type ReactionRow = {
   type: Reaction["type"];
 };
 
+export type ChatListRealtimeEvent =
+  | {
+      kind: "participant";
+      event: "INSERT" | "UPDATE" | "DELETE";
+      payload: Record<string, unknown>;
+    }
+  | {
+      kind: "conversation";
+      event: "INSERT" | "UPDATE" | "DELETE";
+      payload: Record<string, unknown>;
+    }
+  | {
+      kind: "message";
+      event: "INSERT" | "UPDATE" | "DELETE";
+      payload: Record<string, unknown>;
+    };
+
+export type ConversationRealtimeEvent =
+  | {
+      kind: "message";
+      event: "INSERT" | "UPDATE" | "DELETE";
+      payload: Record<string, unknown>;
+    }
+  | {
+      kind: "reaction";
+      event: "INSERT" | "UPDATE" | "DELETE";
+      payload: Record<string, unknown>;
+    };
+
 function getString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
@@ -589,11 +618,8 @@ export async function toggleMessageReaction(
 export function subscribeToConversation(
   client: SupabaseClient,
   conversationId: string,
-  handlers: {
-    onMessagesChange: () => void;
-    onReadReceipt?: (payload: { readerId: string; readAt: string; conversationId: string }) => void;
-  },
-): { unsubscribe: () => void; sendReadReceipt: (payload: { readerId: string; readAt: string }) => Promise<void> } {
+  callback: (event: ConversationRealtimeEvent) => void,
+): () => void {
   let channel: RealtimeChannel | null = null;
 
   try {
@@ -607,7 +633,12 @@ export function subscribeToConversation(
           table: "messages",
           filter: `conversation_id=eq.${conversationId}`,
         },
-        () => handlers.onMessagesChange(),
+        (payload) =>
+          callback({
+            kind: "message",
+            event: payload.eventType as "INSERT" | "UPDATE" | "DELETE",
+            payload: payload as unknown as Record<string, unknown>,
+          }),
       )
       .on(
         "postgres_changes",
@@ -616,49 +647,29 @@ export function subscribeToConversation(
           schema: "public",
           table: "message_reactions",
         },
-        () => handlers.onMessagesChange(),
+        (payload) =>
+          callback({
+            kind: "reaction",
+            event: payload.eventType as "INSERT" | "UPDATE" | "DELETE",
+            payload: payload as unknown as Record<string, unknown>,
+          }),
       )
-      .on("broadcast", { event: "read_receipt" }, ({ payload }) => {
-        const readerId = getString((payload as Record<string, unknown>)?.readerId);
-        const readAt = getString((payload as Record<string, unknown>)?.readAt);
-        const targetConversationId = getString((payload as Record<string, unknown>)?.conversationId);
-        if (!readerId || !readAt || targetConversationId !== conversationId) return;
-        handlers.onReadReceipt?.({ readerId, readAt, conversationId: targetConversationId });
-      })
       .subscribe();
   } catch (error) {
     console.error("subscribeToConversation error:", error);
   }
 
-  return {
-    unsubscribe: () => {
-      if (channel) {
-        void client.removeChannel(channel);
-      }
-    },
-    sendReadReceipt: async ({ readerId, readAt }) => {
-      if (!channel) return;
-      await channel.send({
-        type: "broadcast",
-        event: "read_receipt",
-        payload: {
-          conversationId,
-          readerId,
-          readAt,
-        },
-      });
-    },
+  return () => {
+    if (channel) {
+      void client.removeChannel(channel);
+    }
   };
 }
 
 export function subscribeToChatList(
   client: SupabaseClient,
   currentUserId: string,
-  callback: (event: {
-    source: "participants" | "conversations" | "messages";
-    eventType: string;
-    payload: Record<string, unknown>;
-  }) => void,
+  callback: (event: ChatListRealtimeEvent) => void,
 ): () => void {
   const channels: RealtimeChannel[] = [];
 
@@ -673,7 +684,12 @@ export function subscribeToChatList(
           table: "conversation_participants",
           filter: `user_id=eq.${currentUserId}`,
         },
-        (payload) => callback({ source: "participants", eventType: payload.eventType, payload: payload as unknown as Record<string, unknown> }),
+        (payload) =>
+          callback({
+            kind: "participant",
+            event: payload.eventType as "INSERT" | "UPDATE" | "DELETE",
+            payload: payload as unknown as Record<string, unknown>,
+          }),
       )
       .subscribe();
 
@@ -688,7 +704,12 @@ export function subscribeToChatList(
           schema: "public",
           table: "conversations",
         },
-        (payload) => callback({ source: "conversations", eventType: payload.eventType, payload: payload as unknown as Record<string, unknown> }),
+        (payload) =>
+          callback({
+            kind: "conversation",
+            event: payload.eventType as "INSERT" | "UPDATE" | "DELETE",
+            payload: payload as unknown as Record<string, unknown>,
+          }),
       )
       .subscribe();
 
@@ -699,11 +720,16 @@ export function subscribeToChatList(
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "messages",
         },
-        (payload) => callback({ source: "messages", eventType: payload.eventType, payload: payload as unknown as Record<string, unknown> }),
+        (payload) =>
+          callback({
+            kind: "message",
+            event: payload.eventType as "INSERT" | "UPDATE" | "DELETE",
+            payload: payload as unknown as Record<string, unknown>,
+          }),
       )
       .subscribe();
 

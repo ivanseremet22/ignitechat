@@ -3,7 +3,7 @@ import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { MessageSquarePlus, Search, UserRound, Video } from "lucide-react";
 import AuthPage, { type AuthMode, type RegisterPayload, getInitials } from "./AuthPage";
-import type { Chat, EditableAuthProfile, Message, Reaction, UserProfile } from "./chat-types";
+import type { Chat, EditableAuthProfile, Message, MessageStatus, Reaction, UserProfile } from "./chat-types";
 import Sidebar from "./components/chat/Sidebar";
 import MyProfilePage from "./components/chat/MyProfilePage";
 import ChatView from "./components/chat/ChatView";
@@ -29,6 +29,8 @@ import {
   subscribeToChatList,
   subscribeToConversation,
   toggleMessageReaction,
+  type ChatListRealtimeEvent,
+  type ConversationRealtimeEvent,
 } from "./lib/chat";
 
 function formatTime(value: string) {
@@ -71,45 +73,104 @@ function findMessageById(messages: Message[], id?: string) {
   return messages.find((message) => message.id === id) || null;
 }
 
+type UnreadMap = Record<string, number>;
+type ReadCursorMap = Record<string, string>;
 
-
-function safeParseRecord(value: string | null): Record<string, number> {
-  if (!value) return {};
-  try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
-    const next: Record<string, number> = {};
-    for (const [key, raw] of Object.entries(parsed)) {
-      if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) {
-        next[key] = raw;
-      }
-    }
-    return next;
-  } catch {
-    return {};
-  }
+function buildChatPreview(message: { text?: string | null; voice_duration?: number | null; voice?: number | null }) {
+  const hasVoice =
+    typeof message.voice_duration === "number" ||
+    typeof message.voice === "number";
+  if (hasVoice) return "🎤 Голосовое сообщение";
+  const text = typeof message.text === "string" ? message.text.trim() : "";
+  return text || "Сообщение";
 }
 
-function safeParseStringRecord(value: string | null): Record<string, string> {
-  if (!value) return {};
-  try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
-    const next: Record<string, string> = {};
-    for (const [key, raw] of Object.entries(parsed)) {
-      if (typeof raw === "string" && raw) {
-        next[key] = raw;
-      }
-    }
-    return next;
-  } catch {
-    return {};
-  }
-}
-
-function sortChatsByUpdatedAt(list: Chat[]) {
-  return [...list].sort(
+function sortChatsByActivity(items: Chat[]) {
+  return [...items].sort(
     (left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
   );
 }
+
+function unreadStorageKey(userId: string) {
+  return `ignitechat:unread:${userId}`;
+}
+
+function readCursorStorageKey(userId: string) {
+  return `ignitechat:read-cursor:${userId}`;
+}
+
+function readJsonRecord<T extends Record<string, unknown>>(key: string): T {
+  if (typeof window === "undefined") return {} as T;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return {} as T;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? (parsed as T) : ({} as T);
+  } catch {
+    return {} as T;
+  }
+}
+
+function writeJsonRecord(key: string, value: Record<string, unknown>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function mergeUnreadIntoChats(baseChats: Chat[], unreadMap: UnreadMap) {
+  return sortChatsByActivity(
+    baseChats.map((chat) => ({
+      ...chat,
+      unread: unreadMap[chat.id] ?? chat.unread ?? 0,
+    })),
+  );
+}
+
+function applyPeerReadCursor(
+  messages: Message[],
+  currentUserId: string,
+  peerReadAt?: string | null,
+): Message[] {
+  const readTime = peerReadAt ? new Date(peerReadAt).getTime() : null;
+
+  return messages.map((message) => {
+    if (message.senderId !== currentUserId) {
+      const status: MessageStatus = message.status === "error" ? "error" : "sent";
+      return {
+        ...message,
+        seen: false,
+        status,
+      };
+    }
+
+    const isSeen = readTime !== null && new Date(message.createdAt).getTime() <= readTime;
+    const status: MessageStatus = message.status === "error" ? "error" : isSeen ? "seen" : "sent";
+
+    return {
+      ...message,
+      seen: isSeen,
+      status,
+    };
+  });
+}
+
+function upsertChatWithPatch(chats: Chat[], patch: Chat) {
+  const filtered = chats.filter((chat) => chat.id !== patch.id);
+  return sortChatsByActivity([patch, ...filtered]);
+}
+
+function coercePayloadRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function getStringField(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  return typeof value === "string" ? value : "";
+}
+
 
 export default function App() {
   const location = useLocation();
@@ -171,90 +232,22 @@ export default function App() {
     avatarDataUrl: "",
   });
 
+
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const profileAvatarInputRef = useRef<HTMLInputElement | null>(null);
   const mobileEmptyStatePromptShownRef = useRef(false);
-  const unreadMapRef = useRef<Record<string, number>>({});
-  const readCursorRef = useRef<Record<string, string>>({});
-  const currentUserIdRef = useRef<string | null>(null);
-  const messagesRef = useRef<Message[]>([]);
-
-  const unreadStorageKey = currentProfile ? `ignite.unread.${currentProfile.id}` : null;
-  const readCursorStorageKey = currentProfile ? `ignite.readCursor.${currentProfile.id}` : null;
-
-  function persistUnreadMap() {
-    if (typeof window === "undefined" || !unreadStorageKey) return;
-    window.localStorage.setItem(unreadStorageKey, JSON.stringify(unreadMapRef.current));
-  }
-
-  function persistReadCursors() {
-    if (typeof window === "undefined" || !readCursorStorageKey) return;
-    window.localStorage.setItem(readCursorStorageKey, JSON.stringify(readCursorRef.current));
-  }
-
-  function applyReadCursorToMessages(list: Message[], chatId: string): Message[] {
-    const readAt = readCursorRef.current[chatId];
-    if (!readAt) return list;
-    const readTs = new Date(readAt).getTime();
-    return list.map((message): Message => {
-      if (message.chatId !== chatId) return message;
-      if (message.senderId === currentProfile?.id) {
-        const seen = new Date(message.createdAt).getTime() <= readTs;
-        return {
-          ...message,
-          seen,
-          status: seen ? "seen" as const : "sent" as const,
-        };
-      }
-      return message;
-    });
-  }
-
-  function applyUnreadToChats(list: Chat[]) {
-    return sortChatsByUpdatedAt(
-      list.map((chat) => ({
-        ...chat,
-        unread: unreadMapRef.current[chat.id] ?? 0,
-      })),
-    );
-  }
-
-  function setUnreadCount(chatId: string, count: number) {
-    unreadMapRef.current = {
-      ...unreadMapRef.current,
-      [chatId]: Math.max(0, count),
-    };
-    persistUnreadMap();
-  }
-
-  function incrementUnread(chatId: string) {
-    const next = (unreadMapRef.current[chatId] ?? 0) + 1;
-    setUnreadCount(chatId, next);
-  }
-
-  function markChatRead(chatId: string) {
-    if ((unreadMapRef.current[chatId] ?? 0) === 0) return;
-    setUnreadCount(chatId, 0);
-  }
-
-
+  const unreadMapRef = useRef<UnreadMap>({});
+  const peerReadCursorRef = useRef<ReadCursorMap>({});
+  const activeChatIdRef = useRef<string | null>(null);
+  const currentProfileRef = useRef<UserProfile | null>(null);
 
   useEffect(() => {
-    currentUserIdRef.current = currentProfile?.id ?? null;
-
-    if (typeof window === "undefined" || !currentProfile?.id) {
-      unreadMapRef.current = {};
-      readCursorRef.current = {};
-      return;
-    }
-
-    unreadMapRef.current = safeParseRecord(window.localStorage.getItem(`ignite.unread.${currentProfile.id}`));
-    readCursorRef.current = safeParseStringRecord(window.localStorage.getItem(`ignite.readCursor.${currentProfile.id}`));
-  }, [currentProfile?.id]);
+    activeChatIdRef.current = activeChatId;
+  }, [activeChatId]);
 
   useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
+    currentProfileRef.current = currentProfile;
+  }, [currentProfile]);
 
   useEffect(() => {
     let active = true;
@@ -427,16 +420,24 @@ export default function App() {
           throw new Error("Не удалось подготовить профиль текущего пользователя.");
         }
 
-        const [nextUsers, nextChats] = await Promise.all([
+        const [nextUsers, fetchedChats] = await Promise.all([
           fetchUsers(client, nextCurrentProfile.id),
           fetchChats(client, nextCurrentProfile.id),
         ]);
 
         if (!mounted) return;
 
+        const savedUnread = readJsonRecord<UnreadMap>(unreadStorageKey(nextCurrentProfile.id));
+        const savedReadCursors = readJsonRecord<ReadCursorMap>(readCursorStorageKey(nextCurrentProfile.id));
+
+        unreadMapRef.current = savedUnread;
+        peerReadCursorRef.current = savedReadCursors;
+
+        const nextChats = mergeUnreadIntoChats(fetchedChats, savedUnread);
+
         setCurrentProfile(nextCurrentProfile);
         setUsers(nextUsers);
-        setChats(applyUnreadToChats(nextChats));
+        setChats(nextChats);
         setActiveChatId((prev) => {
           if (prev && nextChats.some((chat) => chat.id === prev)) return prev;
           return nextChats[0]?.id ?? null;
@@ -463,92 +464,102 @@ export default function App() {
     if (!isAuthenticated || !authClient || !currentProfile) return;
 
     const client = authClient;
+    const currentUserId = currentProfile.id;
     let alive = true;
-    let refreshTimer: number | null = null;
 
-    const runRefresh = () => {
-      if (refreshTimer !== null) {
-        window.clearTimeout(refreshTimer);
-      }
-
-      refreshTimer = window.setTimeout(async () => {
-        try {
-          const nextChats = applyUnreadToChats(await fetchChats(client, currentProfile.id));
-          if (!alive) return;
-
-          setChats(nextChats);
-          setActiveChatId((prev) => {
-            if (routeChatId && nextChats.some((chat) => chat.id === routeChatId)) {
-              return routeChatId;
-            }
-
-            if (prev && nextChats.some((chat) => chat.id === prev)) {
-              return prev;
-            }
-
-            return nextChats[0]?.id ?? null;
-          });
-        } catch (error) {
-          console.error("chat list refresh error:", error);
-        }
-      }, 150);
+    const persistUnread = () => {
+      writeJsonRecord(unreadStorageKey(currentUserId), unreadMapRef.current);
     };
 
-    const unsubscribe = subscribeToChatList(client, currentProfile.id, ({ source, eventType, payload }) => {
+    const refreshFromServer = async (keepChatId?: string | null) => {
+      try {
+        const fetchedChats = await fetchChats(client, currentUserId);
+        if (!alive) return;
+        const mergedChats = mergeUnreadIntoChats(fetchedChats, unreadMapRef.current);
+        setChats(mergedChats);
+        setActiveChatId((prev) => {
+          const target = keepChatId ?? routeChatId ?? prev;
+          if (target && mergedChats.some((chat) => chat.id === target)) return target;
+          return mergedChats[0]?.id ?? null;
+        });
+      } catch (error) {
+        console.error("chat list refresh error:", error);
+      }
+    };
+
+    const unsubscribe = subscribeToChatList(client, currentUserId, (event: ChatListRealtimeEvent) => {
       if (!alive) return;
 
-      if (source === "messages" && eventType === "INSERT") {
-        const row = (payload.new ?? {}) as Record<string, unknown>;
-        const conversationId = typeof row.conversation_id === "string" ? row.conversation_id : "";
-        const senderId = typeof row.sender_id === "string" ? row.sender_id : "";
-        const text = typeof row.text === "string" ? row.text : "";
-        const createdAt =
-          typeof row.created_at === "string" ? row.created_at : new Date().toISOString();
+      if (event.kind === "message" && event.event === "INSERT") {
+        const payload = coercePayloadRecord(event.payload);
+        const nextRow = coercePayloadRecord(payload.new);
+        const conversationId = getStringField(nextRow, "conversation_id");
+        const senderId = getStringField(nextRow, "sender_id");
+        const createdAt = getStringField(nextRow, "created_at") || new Date().toISOString();
 
         if (!conversationId) return;
 
-        if (senderId && senderId !== currentProfile.id && activeChatId !== conversationId) {
-          incrementUnread(conversationId);
-        }
+        const isMine = senderId === currentUserId;
+        const isActiveChat = activeChatIdRef.current === conversationId;
+        const preview = buildChatPreview({
+          text: typeof nextRow.text === "string" ? nextRow.text : null,
+          voice_duration:
+            typeof nextRow.voice_duration === "number" ? nextRow.voice_duration : null,
+        });
+
+        let found = false;
 
         setChats((prev) => {
-          const existing = prev.find((chat) => chat.id === conversationId);
-          if (!existing) {
-            void runRefresh();
-            return prev;
-          }
+          const nextChats = prev.map((chat) => {
+            if (chat.id !== conversationId) return chat;
+            found = true;
 
-          const next = prev.map((chat) =>
-            chat.id === conversationId
-              ? {
-                  ...chat,
-                  preview: text.trim() || "Сообщение",
-                  updatedAt: createdAt,
-                  unread:
-                    senderId && senderId !== currentProfile.id && activeChatId !== conversationId
-                      ? unreadMapRef.current[conversationId] ?? chat.unread ?? 0
-                      : unreadMapRef.current[conversationId] ?? 0,
-                }
-              : chat,
-          );
+            let unread = chat.unread ?? 0;
+            if (!isMine && !isActiveChat) {
+              unread = unread + 1;
+              unreadMapRef.current = {
+                ...unreadMapRef.current,
+                [conversationId]: unread,
+              };
+              persistUnread();
+            }
 
-          return sortChatsByUpdatedAt(next);
+            if (isActiveChat) {
+              unread = 0;
+              if (conversationId in unreadMapRef.current) {
+                const nextUnread = { ...unreadMapRef.current };
+                delete nextUnread[conversationId];
+                unreadMapRef.current = nextUnread;
+                persistUnread();
+              }
+            }
+
+            return {
+              ...chat,
+              preview,
+              updatedAt: createdAt,
+              unread,
+            };
+          });
+
+          return found ? sortChatsByActivity(nextChats) : prev;
         });
+
+        if (!found) {
+          void refreshFromServer(conversationId);
+        }
 
         return;
       }
 
-      runRefresh();
+      void refreshFromServer(activeChatIdRef.current);
     });
 
     return () => {
       alive = false;
-      if (refreshTimer !== null) {
-        window.clearTimeout(refreshTimer);
-      }
       unsubscribe();
     };
-  }, [activeChatId, authClient, currentProfile, isAuthenticated, routeChatId]);
+  }, [authClient, currentProfile?.id, isAuthenticated, routeChatId]);
 
   useEffect(() => {
     if (!isAuthenticated || !authClient || !activeChatId || !currentProfile) {
@@ -558,66 +569,94 @@ export default function App() {
     }
 
     const client = authClient;
+    const currentUserId = currentProfile.id;
     let active = true;
     setLoadingMessages(true);
     setError(null);
 
-    const mergeMessages = (incoming: Message[]): Message[] => {
-      const previousMap = new Map(messagesRef.current.map((message) => [message.id, message]));
-      const merged: Message[] = incoming.map((message): Message => {
-        const previous = previousMap.get(message.id);
-        const base: Message = previous
-          ? {
-              ...message,
-              status: previous.status ?? message.status,
-              seen: previous.seen ?? message.seen,
-            }
-          : message;
-
-        return base;
-      });
-
-      return applyReadCursorToMessages(merged, activeChatId);
+    const persistUnread = () => {
+      writeJsonRecord(unreadStorageKey(currentUserId), unreadMapRef.current);
     };
 
-    let sendReadReceipt = async (_payload: { readerId: string; readAt: string }) => {};
+    const persistReadCursors = () => {
+      writeJsonRecord(readCursorStorageKey(currentUserId), peerReadCursorRef.current);
+    };
 
-    const pushReadReceipt = async (list: Message[]) => {
-      const latest = [...list]
-        .filter((message) => message.chatId === activeChatId)
-        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())[0];
+    const clearUnreadForActiveChat = () => {
+      if (unreadMapRef.current[activeChatId]) {
+        const nextUnread = { ...unreadMapRef.current };
+        delete nextUnread[activeChatId];
+        unreadMapRef.current = nextUnread;
+        persistUnread();
+      }
 
-      if (!latest) return;
+      setChats((prev) =>
+        prev.map((chat) => (chat.id === activeChatId ? { ...chat, unread: 0 } : chat)),
+      );
+    };
 
-      const readAt = latest.createdAt;
-      const previous = readCursorRef.current[activeChatId];
+    const applyPeerReadAt = (readAt?: string | null) => {
+      if (!readAt) return;
+      const previous = peerReadCursorRef.current[activeChatId];
       if (previous && new Date(previous).getTime() >= new Date(readAt).getTime()) {
         return;
       }
 
-      readCursorRef.current = {
-        ...readCursorRef.current,
+      peerReadCursorRef.current = {
+        ...peerReadCursorRef.current,
         [activeChatId]: readAt,
       };
       persistReadCursors();
-      await sendReadReceipt({
-        readerId: currentProfile.id,
-        readAt,
-      });
+
+      setMessages((prev) => applyPeerReadCursor(prev, currentUserId, readAt));
+    };
+
+    const readChannel = client
+      .channel(`read-receipts:${activeChatId}`)
+      .on("broadcast", { event: "read" }, ({ payload }) => {
+        const record = coercePayloadRecord(payload);
+        const userId = getStringField(record, "userId");
+        const chatId = getStringField(record, "chatId");
+        const readAt = getStringField(record, "readAt");
+        if (!userId || userId === currentUserId || chatId !== activeChatId || !readAt) return;
+        applyPeerReadAt(readAt);
+      })
+      .subscribe();
+
+    const broadcastRead = async (readAt: string) => {
+      clearUnreadForActiveChat();
+      try {
+        await readChannel.send({
+          type: "broadcast",
+          event: "read",
+          payload: {
+            chatId: activeChatId,
+            userId: currentUserId,
+            readAt,
+          },
+        });
+      } catch (error) {
+        console.error("read receipt broadcast error:", error);
+      }
     };
 
     const loadConversation = async () => {
       try {
-        const nextMessages = await fetchMessages(client, activeChatId);
+        const fetchedMessages = await fetchMessages(client, activeChatId);
         if (!active) return;
 
-        const merged = mergeMessages(nextMessages);
-        setMessages(merged);
-        markChatRead(activeChatId);
-        setChats((prev) =>
-          prev.map((chat) => (chat.id === activeChatId ? { ...chat, unread: 0 } : chat)),
-        );
-        await pushReadReceipt(merged);
+        const peerReadAt = peerReadCursorRef.current[activeChatId];
+        const nextMessages = applyPeerReadCursor(fetchedMessages, currentUserId, peerReadAt);
+        setMessages(nextMessages);
+
+        const peerMessages = nextMessages.filter((message) => message.senderId !== currentUserId);
+        const latestPeerMessage = peerMessages[peerMessages.length - 1];
+
+        clearUnreadForActiveChat();
+
+        if (latestPeerMessage) {
+          void broadcastRead(latestPeerMessage.createdAt);
+        }
       } catch (err: unknown) {
         if (!active) return;
         setError(err instanceof Error ? err.message : "Не удалось загрузить сообщения.");
@@ -628,51 +667,64 @@ export default function App() {
       }
     };
 
-    const subscription = subscribeToConversation(client, activeChatId, {
-      onMessagesChange: () => {
-        void loadConversation();
-      },
-      onReadReceipt: ({ readerId, readAt, conversationId }) => {
-        if (!active || readerId === currentProfile.id || conversationId !== activeChatId) return;
+    void loadConversation();
 
-        const previous = readCursorRef.current[conversationId];
-        if (!previous || new Date(readAt).getTime() > new Date(previous).getTime()) {
-          readCursorRef.current = {
-            ...readCursorRef.current,
-            [conversationId]: readAt,
-          };
-          persistReadCursors();
+    const unsubscribe = subscribeToConversation(
+      client,
+      activeChatId,
+      (event: ConversationRealtimeEvent) => {
+        if (!active) return;
+
+        if (event.kind === "message") {
+          const payload = coercePayloadRecord(event.payload);
+          const nextRow =
+            event.event === "DELETE"
+              ? coercePayloadRecord(payload.old)
+              : coercePayloadRecord(payload.new);
+
+          const createdAt = getStringField(nextRow, "created_at") || new Date().toISOString();
+          const senderId = getStringField(nextRow, "sender_id");
+
+          if (event.event === "INSERT" || event.event === "UPDATE") {
+            setChats((prev) =>
+              sortChatsByActivity(
+                prev.map((chat) =>
+                  chat.id === activeChatId
+                    ? {
+                        ...chat,
+                        preview: buildChatPreview({
+                          text: typeof nextRow.text === "string" ? nextRow.text : null,
+                          voice_duration:
+                            typeof nextRow.voice_duration === "number" ? nextRow.voice_duration : null,
+                        }),
+                        updatedAt: createdAt,
+                        unread: 0,
+                      }
+                    : chat,
+                ),
+              ),
+            );
+          }
+
+          void loadConversation();
+
+          if (event.event === "INSERT" && senderId && senderId !== currentUserId) {
+            void broadcastRead(createdAt);
+          }
+
+          return;
         }
 
-        setMessages((prev) =>
-          prev.map((message) => {
-            if (message.chatId !== conversationId || message.senderId !== currentProfile.id) {
-              return message;
-            }
-
-            const seen = new Date(message.createdAt).getTime() <= new Date(readAt).getTime();
-
-            if (!seen) return message;
-
-            return {
-              ...message,
-              seen: true,
-              status: "seen",
-            };
-          }),
-        );
+        void loadConversation();
       },
-    });
-
-    sendReadReceipt = subscription.sendReadReceipt;
-
-    void loadConversation();
+    );
 
     return () => {
       active = false;
-      subscription.unsubscribe();
+      unsubscribe();
+      void client.removeChannel(readChannel);
     };
-  }, [activeChatId, authClient, currentProfile, isAuthenticated]);
+  }, [activeChatId, authClient, currentProfile?.id, isAuthenticated]);
 
   const filteredChats = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -795,7 +847,7 @@ export default function App() {
   async function refreshChats(keepChatId?: string | null) {
     if (!authClient || !currentProfile) return;
     const client = authClient;
-    const nextChats = applyUnreadToChats(await fetchChats(client, currentProfile.id));
+    const nextChats = await fetchChats(client, currentProfile.id);
     setChats(nextChats);
     setActiveChatId((prev) => {
       const target = keepChatId ?? prev;
@@ -812,8 +864,36 @@ export default function App() {
     const hasVoice = pendingVoiceSeconds !== null;
     if (!trimmed && !hasVoice) return;
 
+    const optimisticId = `temp-${Date.now()}`;
+    const createdAt = new Date().toISOString();
+    const optimisticMessage: Message = {
+      id: optimisticId,
+      chatId: activeChat.id,
+      senderId: currentProfile.id,
+      text: trimmed,
+      createdAt,
+      replyTo: replyTo || undefined,
+      voice: hasVoice ? pendingVoiceSeconds || undefined : undefined,
+      voiceUrl: null,
+      reactions: [],
+      status: "sent",
+      seen: false,
+    };
+
     setSending(true);
     setError(null);
+    setMessages((prev) => [...prev, optimisticMessage]);
+    setChats((prev) =>
+      upsertChatWithPatch(prev, {
+        ...activeChat,
+        preview: buildChatPreview({
+          text: trimmed,
+          voice: hasVoice ? pendingVoiceSeconds || undefined : undefined,
+        }),
+        updatedAt: createdAt,
+        unread: 0,
+      }),
+    );
 
     try {
       await sendMessageToConversation(client, {
@@ -831,20 +911,12 @@ export default function App() {
       setRecordStart(null);
       setSendPulse(true);
       window.setTimeout(() => setSendPulse(false), 280);
-      setChats((prev) =>
-        sortChatsByUpdatedAt(
-          prev.map((chat) =>
-            chat.id === activeChat.id
-              ? {
-                  ...chat,
-                  preview: hasVoice ? "🎤 Голосовое сообщение" : trimmed || "Сообщение",
-                  updatedAt: new Date().toISOString(),
-                }
-              : chat,
-          ),
+    } catch (err: unknown) {
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === optimisticId ? { ...message, status: "error" } : message,
         ),
       );
-    } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Не удалось отправить сообщение.");
     } finally {
       window.setTimeout(() => setSending(false), 220);
@@ -918,6 +990,18 @@ export default function App() {
   function selectChat(chatId: string) {
     setActiveChatId(chatId);
     setReplyTo(null);
+
+    if (currentProfileRef.current) {
+      if (unreadMapRef.current[chatId]) {
+        const nextUnread = { ...unreadMapRef.current };
+        delete nextUnread[chatId];
+        unreadMapRef.current = nextUnread;
+        writeJsonRecord(unreadStorageKey(currentProfileRef.current.id), nextUnread);
+      }
+
+      setChats((prev) => prev.map((chat) => (chat.id === chatId ? { ...chat, unread: 0 } : chat)));
+    }
+
     navigate(`/chat/${chatId}`);
     if (!isDesktop) {
       setMobileSidebarOpen(false);
