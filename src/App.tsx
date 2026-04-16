@@ -257,6 +257,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [myProfilePageOpen, setMyProfilePageOpen] = useState(false);
   const [editingMyProfile, setEditingMyProfile] = useState(false);
+  const [presenceState, setPresenceState] = useState<PresenceStateMap>({});
   const [myProfileDraft, setMyProfileDraft] = useState<EditableAuthProfile>({
     name: "",
     username: "",
@@ -272,6 +273,7 @@ export default function App() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const profileAvatarInputRef = useRef<HTMLInputElement | null>(null);
   const mobileEmptyStatePromptShownRef = useRef(false);
+  const unreadCountRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
     let active = true;
