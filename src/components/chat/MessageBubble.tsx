@@ -89,6 +89,15 @@ function MessageBubble({
             : "Отправлено"
     : "";
 
+
+  const indicatorTone = mine
+    ? message.status === "seen" || message.seen
+      ? "seen"
+      : message.status === "error"
+        ? "error"
+        : "sent"
+    : "idle";
+
   const showActions = hoveredMsg === message.id;
 
   return (
@@ -161,10 +170,35 @@ function MessageBubble({
           <div className="flex flex-wrap items-center gap-2">
             <span>{timeLabel}</span>
             {mine && (
-              <span className="inline-flex items-center gap-1">
+              <span
+                className={
+                  "inline-flex items-center gap-1.5 " +
+                  (indicatorTone === "seen"
+                    ? "text-sky-600"
+                    : indicatorTone === "error"
+                      ? "text-rose-600"
+                      : "text-rose-500")
+                }
+              >
+                <span
+                  className={
+                    "status-candle-dot " +
+                    (indicatorTone === "seen"
+                      ? "status-candle-dot--seen"
+                      : indicatorTone === "error"
+                        ? "status-candle-dot--error"
+                        : "status-candle-dot--sent")
+                  }
+                  aria-hidden="true"
+                />
                 {statusLabel}
                 {(message.status === "delivered" || message.status === "seen" || message.seen) && (
-                  <CheckCheck className="h-3.5 w-3.5" />
+                  <CheckCheck
+                    className={
+                      "h-3.5 w-3.5 status-candle-icon " +
+                      (indicatorTone === "seen" ? "status-candle-icon--seen" : "status-candle-icon--sent")
+                    }
+                  />
                 )}
               </span>
             )}
