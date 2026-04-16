@@ -274,6 +274,7 @@ export default function App() {
   const profileAvatarInputRef = useRef<HTMLInputElement | null>(null);
   const mobileEmptyStatePromptShownRef = useRef(false);
   const unreadCountRef = useRef<Record<string, number>>({});
+  const chatsRef = useRef<Chat[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -348,6 +349,10 @@ export default function App() {
   useEffect(() => {
     mobileEmptyStatePromptShownRef.current = false;
   }, [authRefreshKey]);
+
+  useEffect(() => {
+    chatsRef.current = chats;
+  }, [chats]);
 
   useEffect(() => {
     if (
@@ -499,14 +504,22 @@ export default function App() {
           unreadCountRef.current[event.conversationId] =
             typeof nextChat.unread === "number" ? nextChat.unread : 0;
 
-          setChats((prev) => upsertChat(prev, nextChat));
+          setChats((prev) => {
+            const nextItems = upsertChat(prev, nextChat);
+            chatsRef.current = nextItems;
+            return nextItems;
+          });
           setActiveChatId((prev) => prev ?? nextChat.id);
           return;
         }
 
         if (event.kind === "participant_delete") {
           delete unreadCountRef.current[event.conversationId];
-          setChats((prev) => prev.filter((chat) => chat.id !== event.conversationId));
+          setChats((prev) => {
+            const nextItems = prev.filter((chat) => chat.id !== event.conversationId);
+            chatsRef.current = nextItems;
+            return nextItems;
+          });
           setActiveChatId((prev) => (prev === event.conversationId ? null : prev));
           return;
         }
@@ -524,7 +537,7 @@ export default function App() {
 
           unreadCountRef.current[event.conversationId] = nextUnread;
 
-          let didPatchExisting = false;
+          const chatExists = chatsRef.current.some((chat) => chat.id === event.conversationId);
 
           setChats((prev) => {
             const nextItems = patchChatPreview(
@@ -536,21 +549,23 @@ export default function App() {
                 unreadValue: nextUnread,
               },
             );
-            didPatchExisting = nextItems !== prev;
+            chatsRef.current = nextItems;
             return nextItems;
           });
 
-          if (!didPatchExisting) {
+          if (!chatExists) {
             const nextChat = await fetchChatById(client, currentUserId, event.conversationId);
             if (!active || !nextChat) return;
-            setChats((prev) =>
-              upsertChat(prev, {
+            setChats((prev) => {
+              const nextItems = upsertChat(prev, {
                 ...nextChat,
                 unread: nextUnread,
                 preview: event.preview,
                 updatedAt: event.createdAt,
-              }),
-            );
+              });
+              chatsRef.current = nextItems;
+              return nextItems;
+            });
           }
           return;
         }
@@ -569,11 +584,13 @@ export default function App() {
             const existing = prev.find((chat) => chat.id === event.conversationId);
             if (!existing) return prev;
 
-            return upsertChat(prev, {
+            const nextItems = upsertChat(prev, {
               ...existing,
               preview: event.preview?.trim() || existing.preview,
               updatedAt: event.updatedAt || existing.updatedAt,
             });
+            chatsRef.current = nextItems;
+            return nextItems;
           });
         }
       } catch (error) {
