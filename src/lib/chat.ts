@@ -43,6 +43,14 @@ export type ChatListRealtimeEvent =
   | { kind: "message_delete"; conversationId: string }
   | { kind: "conversation_update"; conversationId: string; preview: string | null; updatedAt: string | null };
 
+export type PresenceStateMap = Record<
+  string,
+  {
+    online: boolean;
+    activeChatId: string | null;
+  }
+>;
+
 
 function getString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
@@ -168,7 +176,7 @@ function mapMessages(rows: MessageRow[], reactions: ReactionRow[]): Message[] {
           userId: reaction.user_id,
           type: reaction.type,
         })),
-      seen: true,
+      seen: false,
       status: "sent" as const,
     }))
     .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
@@ -905,9 +913,26 @@ export function subscribeToChatList(
 export function subscribeToPresence(
   client: SupabaseClient,
   currentUserId: string,
-  callback: (onlineUserIds: Set<string>) => void,
+  activeChatId: string | null,
+  callback: (presence: PresenceStateMap) => void,
 ): () => void {
   let channel: RealtimeChannel | null = null;
+
+  const emitPresence = () => {
+    const rawState = channel?.presenceState<Record<string, unknown>[]>() ?? {};
+    const nextPresence: PresenceStateMap = {};
+
+    for (const [userId, entries] of Object.entries(rawState)) {
+      const firstEntry = Array.isArray(entries) && entries.length > 0 ? entries[0] : {};
+      const entry = (firstEntry ?? {}) as Record<string, unknown>;
+      nextPresence[userId] = {
+        online: true,
+        activeChatId: getNullableString(entry.active_chat_id) ?? null,
+      };
+    }
+
+    callback(nextPresence);
+  };
 
   try {
     channel = client
@@ -918,18 +943,15 @@ export function subscribeToPresence(
           },
         },
       })
-      .on("presence", { event: "sync" }, () => {
-        const state = channel?.presenceState<Record<string, unknown>[]>() ?? {};
-        callback(new Set(Object.keys(state)));
-      })
+      .on("presence", { event: "sync" }, emitPresence)
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED" && channel) {
           await channel.track({
             user_id: currentUserId,
             online_at: new Date().toISOString(),
+            active_chat_id: activeChatId,
           });
-          const state = channel.presenceState<Record<string, unknown>[]>();
-          callback(new Set(Object.keys(state)));
+          emitPresence();
         }
       });
   } catch (error) {

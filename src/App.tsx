@@ -33,6 +33,7 @@ import {
   subscribeToPresence,
   toggleMessageReaction,
   type ChatListRealtimeEvent,
+  type PresenceStateMap,
 } from "./lib/chat";
 
 function formatTime(value: string) {
@@ -104,7 +105,7 @@ function decorateMessagesWithDeliveryState(
   items: Message[],
   currentUserId: string,
   peerOnline: boolean,
-  chatOpen: boolean,
+  peerViewingChat: boolean,
 ): Message[] {
   let hasLaterIncoming = false;
 
@@ -124,7 +125,7 @@ function decorateMessagesWithDeliveryState(
         return message;
       }
 
-      const seen = chatOpen && peerOnline;
+      const seen = peerOnline && peerViewingChat;
       const delivered = seen || peerOnline || hasLaterIncoming;
 
       return {
@@ -135,8 +136,8 @@ function decorateMessagesWithDeliveryState(
     });
 }
 
-function patchPresence(profile: UserProfile, onlineIds: Set<string>): UserProfile {
-  const online = onlineIds.has(profile.id);
+function patchPresence(profile: UserProfile, presence: PresenceStateMap): UserProfile {
+  const online = Boolean(presence[profile.id]?.online);
   return {
     ...profile,
     online,
@@ -180,15 +181,19 @@ function patchChatPreview(
   options?: {
     unreadDelta?: number;
     resetUnread?: boolean;
+    unreadValue?: number;
   },
 ): Chat[] {
   const existing = items.find((chat) => chat.id === conversationId);
   if (!existing) return items;
 
   const unreadBase = typeof existing.unread === "number" ? existing.unread : 0;
-  const unread = options?.resetUnread
-    ? 0
-    : Math.max(0, unreadBase + (options?.unreadDelta ?? 0));
+  const unread =
+    typeof options?.unreadValue === "number"
+      ? Math.max(0, options.unreadValue)
+      : options?.resetUnread
+        ? 0
+        : Math.max(0, unreadBase + (options?.unreadDelta ?? 0));
 
   return upsertChat(items, {
     ...existing,
@@ -448,6 +453,9 @@ export default function App() {
 
         setCurrentProfile(nextCurrentProfile);
         setUsers(nextUsers);
+        unreadCountRef.current = Object.fromEntries(
+          nextChats.map((chat) => [chat.id, typeof chat.unread === "number" ? chat.unread : 0]),
+        );
         setChats(nextChats);
         setActiveChatId((prev) => {
           if (prev && nextChats.some((chat) => chat.id === prev)) return prev;
@@ -486,12 +494,16 @@ export default function App() {
           const nextChat = await fetchChatById(client, currentUserId, event.conversationId);
           if (!active || !nextChat) return;
 
+          unreadCountRef.current[event.conversationId] =
+            typeof nextChat.unread === "number" ? nextChat.unread : 0;
+
           setChats((prev) => upsertChat(prev, nextChat));
           setActiveChatId((prev) => prev ?? nextChat.id);
           return;
         }
 
         if (event.kind === "participant_delete") {
+          delete unreadCountRef.current[event.conversationId];
           setChats((prev) => prev.filter((chat) => chat.id !== event.conversationId));
           setActiveChatId((prev) => (prev === event.conversationId ? null : prev));
           return;
@@ -500,8 +512,15 @@ export default function App() {
         if (event.kind === "message_insert" || event.kind === "message_update") {
           const isOwnMessage = event.senderId === currentUserId;
           const isOpenChat = activeChatId === event.conversationId;
-          const shouldIncrementUnread =
-            event.kind === "message_insert" && !isOwnMessage && !isOpenChat;
+          const currentUnread = unreadCountRef.current[event.conversationId] ?? 0;
+          const nextUnread =
+            isOpenChat || isOwnMessage
+              ? 0
+              : event.kind === "message_insert"
+                ? currentUnread + 1
+                : currentUnread;
+
+          unreadCountRef.current[event.conversationId] = nextUnread;
 
           let didPatchExisting = false;
 
@@ -512,8 +531,7 @@ export default function App() {
               event.preview,
               event.createdAt,
               {
-                unreadDelta: shouldIncrementUnread ? 1 : 0,
-                resetUnread: isOpenChat,
+                unreadValue: nextUnread,
               },
             );
             didPatchExisting = nextItems !== prev;
@@ -526,7 +544,7 @@ export default function App() {
             setChats((prev) =>
               upsertChat(prev, {
                 ...nextChat,
-                unread: shouldIncrementUnread ? 1 : 0,
+                unread: nextUnread,
                 preview: event.preview,
                 updatedAt: event.createdAt,
               }),
@@ -575,15 +593,21 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated || !authClient || !currentProfile?.id) return;
 
-    const unsubscribe = subscribeToPresence(authClient, currentProfile.id, (onlineUserIds) => {
-      setCurrentProfile((prev) => (prev ? patchPresence(prev, onlineUserIds) : prev));
-      setUsers((prev) => prev.map((profile) => patchPresence(profile, onlineUserIds)));
-    });
+    const unsubscribe = subscribeToPresence(
+      authClient,
+      currentProfile.id,
+      activeChatId,
+      (nextPresence) => {
+        setPresenceState(nextPresence);
+        setCurrentProfile((prev) => (prev ? patchPresence(prev, nextPresence) : prev));
+        setUsers((prev) => prev.map((profile) => patchPresence(profile, nextPresence)));
+      },
+    );
 
     return () => {
       unsubscribe();
     };
-  }, [authClient, currentProfile?.id, isAuthenticated]);
+  }, [activeChatId, authClient, currentProfile?.id, isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated || !authClient || !activeChatId || !currentProfile?.id) {
@@ -601,6 +625,7 @@ export default function App() {
       try {
         const nextMessages = await fetchMessages(client, activeChatId);
         if (!active) return;
+        unreadCountRef.current[activeChatId] = 0;
         setMessages(nextMessages);
         setChats((prev) => resetChatUnread(prev, activeChatId));
       } catch (err: unknown) {
@@ -689,21 +714,21 @@ export default function App() {
   const activeMessages = useMemo(() => {
     const baseMessages = messages.filter((message) => message.chatId === activeChatId);
 
-    if (!currentProfile?.id) {
+    if (!currentProfile?.id || !activeChatId) {
       return baseMessages;
     }
 
-    const peerOnline = activeChat?.peerId
-      ? Boolean(users.find((user) => user.id === activeChat.peerId)?.online)
-      : false;
+    const peerId = activeChat?.peerId ?? null;
+    const peerOnline = peerId ? Boolean(presenceState[peerId]?.online) : false;
+    const peerViewingChat = peerId ? presenceState[peerId]?.activeChatId === activeChatId : false;
 
     return decorateMessagesWithDeliveryState(
       baseMessages,
       currentProfile.id,
       peerOnline,
-      Boolean(activeChatId),
+      peerViewingChat,
     );
-  }, [activeChat?.peerId, activeChatId, currentProfile?.id, messages, users]);
+  }, [activeChat?.peerId, activeChatId, currentProfile?.id, messages, presenceState]);
 
   const replyPreview = useMemo(
     () => findMessageById(activeMessages, replyTo || undefined),
@@ -870,6 +895,7 @@ export default function App() {
       const chatId = await createOrGetDirectConversation(client, currentProfile.id, userId);
       const nextChat = await fetchChatById(client, currentProfile.id, chatId);
       if (nextChat) {
+        unreadCountRef.current[chatId] = 0;
         setChats((prev) =>
           upsertChat(prev, {
             ...nextChat,
@@ -916,6 +942,7 @@ export default function App() {
   }
 
   function selectChat(chatId: string) {
+    unreadCountRef.current[chatId] = 0;
     setActiveChatId(chatId);
     setChats((prev) => resetChatUnread(prev, chatId));
     setReplyTo(null);
