@@ -21,20 +21,15 @@ import {
 } from "./lib/auth";
 import {
   createOrGetDirectConversation,
-  fetchChatById,
   fetchChats,
   fetchCurrentProfile,
   fetchMessages,
   fetchUsers,
-  searchUsers,
   sendMessageToConversation,
   subscribeToChatList,
   subscribeToConversation,
-  subscribeToPresence,
+  subscribeToReadReceipts,
   toggleMessageReaction,
-  type ChatListRealtimeEvent,
-  type PresenceController,
-  type PresenceStateMap,
 } from "./lib/chat";
 
 function formatTime(value: string) {
@@ -77,141 +72,6 @@ function findMessageById(messages: Message[], id?: string) {
   return messages.find((message) => message.id === id) || null;
 }
 
-
-
-
-function createOptimisticMessage(input: {
-  chatId: string;
-  senderId: string;
-  text: string;
-  replyTo?: string | null;
-  voice?: number | null;
-}): Message {
-  return {
-    id: `temp-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    chatId: input.chatId,
-    senderId: input.senderId,
-    text: input.text,
-    createdAt: new Date().toISOString(),
-    replyTo: input.replyTo ?? undefined,
-    voice: input.voice ?? undefined,
-    voiceUrl: null,
-    reactions: [],
-    status: "sending",
-    seen: false,
-  };
-}
-
-function decorateMessagesWithDeliveryState(
-  items: Message[],
-  currentUserId: string,
-  peerOnline: boolean,
-  peerViewingChat: boolean,
-  peerLastReadAt: string | null,
-): Message[] {
-  let hasLaterIncoming = false;
-  const peerReadTime = peerLastReadAt ? new Date(peerLastReadAt).getTime() : 0;
-
-  return [...items]
-    .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
-    .map((message) => {
-      if (message.senderId !== currentUserId) {
-        hasLaterIncoming = true;
-        return {
-          ...message,
-          status: message.status === "error" ? "error" : "sent",
-          seen: false,
-        };
-      }
-
-      if (message.status === "sending" || message.status === "error") {
-        return message;
-      }
-
-      const messageTime = new Date(message.createdAt).getTime();
-      const seen = Boolean(peerViewingChat && peerReadTime && messageTime <= peerReadTime);
-      const delivered = seen || peerOnline || hasLaterIncoming;
-
-      return {
-        ...message,
-        status: seen ? "seen" : delivered ? "delivered" : "sent",
-        seen,
-      };
-    });
-}
-
-function patchPresence(profile: UserProfile, presence: PresenceStateMap): UserProfile {
-  const online = Boolean(presence[profile.id]?.online);
-  return {
-    ...profile,
-    online,
-    status: online ? "в сети" : "не в сети",
-  };
-}
-
-
-function sortChatsByUpdatedAt(items: Chat[]): Chat[] {
-  return [...items].sort((left, right) => {
-    const pinnedDiff = Number(Boolean(right.pinned)) - Number(Boolean(left.pinned));
-    if (pinnedDiff !== 0) return pinnedDiff;
-    return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
-  });
-}
-
-function upsertChat(items: Chat[], nextChat: Chat): Chat[] {
-  const filtered = items.filter((chat) => chat.id !== nextChat.id);
-  return sortChatsByUpdatedAt([nextChat, ...filtered]);
-}
-
-function patchChat(
-  items: Chat[],
-  conversationId: string,
-  patch: Partial<Chat>,
-): Chat[] {
-  const existing = items.find((chat) => chat.id === conversationId);
-  if (!existing) return items;
-
-  return upsertChat(items, {
-    ...existing,
-    ...patch,
-  });
-}
-
-function patchChatPreview(
-  items: Chat[],
-  conversationId: string,
-  preview: string,
-  updatedAt: string,
-  options?: {
-    unreadDelta?: number;
-    resetUnread?: boolean;
-    unreadValue?: number;
-  },
-): Chat[] {
-  const existing = items.find((chat) => chat.id === conversationId);
-  if (!existing) return items;
-
-  const unreadBase = typeof existing.unread === "number" ? existing.unread : 0;
-  const unread =
-    typeof options?.unreadValue === "number"
-      ? Math.max(0, options.unreadValue)
-      : options?.resetUnread
-        ? 0
-        : Math.max(0, unreadBase + (options?.unreadDelta ?? 0));
-
-  return upsertChat(items, {
-    ...existing,
-    preview,
-    updatedAt,
-    unread,
-  });
-}
-
-function resetChatUnread(items: Chat[], conversationId: string): Chat[] {
-  return patchChat(items, conversationId, { unread: 0 });
-}
-
-
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -242,7 +102,6 @@ export default function App() {
   const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [searchResults, setSearchResults] = useState<UserProfile[]>([]);
   const [sendPulse, setSendPulse] = useState(false);
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
@@ -261,7 +120,6 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [myProfilePageOpen, setMyProfilePageOpen] = useState(false);
   const [editingMyProfile, setEditingMyProfile] = useState(false);
-  const [presenceState, setPresenceState] = useState<PresenceStateMap>({});
   const [myProfileDraft, setMyProfileDraft] = useState<EditableAuthProfile>({
     name: "",
     username: "",
@@ -277,9 +135,7 @@ export default function App() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const profileAvatarInputRef = useRef<HTMLInputElement | null>(null);
   const mobileEmptyStatePromptShownRef = useRef(false);
-  const unreadCountRef = useRef<Record<string, number>>({});
-  const chatsRef = useRef<Chat[]>([]);
-  const presenceControllerRef = useRef<PresenceController | null>(null);
+  const readReceiptRef = useRef<{ notifyRead: (viewerId: string, lastReadAt: string) => void; unsubscribe: () => void } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -354,10 +210,6 @@ export default function App() {
   useEffect(() => {
     mobileEmptyStatePromptShownRef.current = false;
   }, [authRefreshKey]);
-
-  useEffect(() => {
-    chatsRef.current = chats;
-  }, [chats]);
 
   useEffect(() => {
     if (
@@ -465,9 +317,6 @@ export default function App() {
 
         setCurrentProfile(nextCurrentProfile);
         setUsers(nextUsers);
-        unreadCountRef.current = Object.fromEntries(
-          nextChats.map((chat) => [chat.id, typeof chat.unread === "number" ? chat.unread : 0]),
-        );
         setChats(nextChats);
         setActiveChatId((prev) => {
           if (prev && nextChats.some((chat) => chat.id === prev)) return prev;
@@ -492,154 +341,53 @@ export default function App() {
 
 
   useEffect(() => {
-    if (!isAuthenticated || !authClient || !currentProfile?.id) return;
+    if (!isAuthenticated || !authClient || !currentProfile) return;
 
     const client = authClient;
-    const currentUserId = currentProfile.id;
-    let active = true;
+    let alive = true;
+    let refreshTimer: number | null = null;
 
-    const applyChatListEvent = async (event: ChatListRealtimeEvent) => {
-      if (!active) return;
-
-      try {
-        if (event.kind === "participant_insert") {
-          const nextChat = await fetchChatById(client, currentUserId, event.conversationId);
-          if (!active || !nextChat) return;
-
-          unreadCountRef.current[event.conversationId] =
-            typeof nextChat.unread === "number" ? nextChat.unread : 0;
-
-          setChats((prev) => {
-            const nextItems = upsertChat(prev, nextChat);
-            chatsRef.current = nextItems;
-            return nextItems;
-          });
-          setActiveChatId((prev) => prev ?? nextChat.id);
-          return;
-        }
-
-        if (event.kind === "participant_delete") {
-          delete unreadCountRef.current[event.conversationId];
-          setChats((prev) => {
-            const nextItems = prev.filter((chat) => chat.id !== event.conversationId);
-            chatsRef.current = nextItems;
-            return nextItems;
-          });
-          setActiveChatId((prev) => (prev === event.conversationId ? null : prev));
-          return;
-        }
-
-        if (event.kind === "message_insert" || event.kind === "message_update") {
-          const isOwnMessage = event.senderId === currentUserId;
-          const isOpenChat = activeChatId === event.conversationId;
-          const currentUnread = unreadCountRef.current[event.conversationId] ?? 0;
-          const nextUnread =
-            isOpenChat || isOwnMessage
-              ? 0
-              : event.kind === "message_insert"
-                ? currentUnread + 1
-                : currentUnread;
-
-          unreadCountRef.current[event.conversationId] = nextUnread;
-
-          const chatExists = chatsRef.current.some((chat) => chat.id === event.conversationId);
-
-          setChats((prev) => {
-            const nextItems = patchChatPreview(
-              prev,
-              event.conversationId,
-              event.preview,
-              event.createdAt,
-              {
-                unreadValue: nextUnread,
-              },
-            );
-            chatsRef.current = nextItems;
-            return nextItems;
-          });
-
-          if (!chatExists) {
-            const nextChat = await fetchChatById(client, currentUserId, event.conversationId);
-            if (!active || !nextChat) return;
-            setChats((prev) => {
-              const nextItems = upsertChat(prev, {
-                ...nextChat,
-                unread: nextUnread,
-                preview: event.preview,
-                updatedAt: event.createdAt,
-              });
-              chatsRef.current = nextItems;
-              return nextItems;
-            });
-          }
-          return;
-        }
-
-        if (event.kind === "message_delete") {
-          if (activeChatId === event.conversationId) {
-            const nextMessages = await fetchMessages(client, event.conversationId);
-            if (!active) return;
-            setMessages(nextMessages);
-          }
-          return;
-        }
-
-        if (event.kind === "conversation_update") {
-          setChats((prev) => {
-            const existing = prev.find((chat) => chat.id === event.conversationId);
-            if (!existing) return prev;
-
-            const nextItems = upsertChat(prev, {
-              ...existing,
-              preview: event.preview?.trim() || existing.preview,
-              updatedAt: event.updatedAt || existing.updatedAt,
-            });
-            chatsRef.current = nextItems;
-            return nextItems;
-          });
-        }
-      } catch (error) {
-        console.error("chat list realtime patch error:", error);
+    const runRefresh = () => {
+      if (refreshTimer !== null) {
+        window.clearTimeout(refreshTimer);
       }
+
+      refreshTimer = window.setTimeout(async () => {
+        try {
+          const nextChats = await fetchChats(client, currentProfile.id);
+          if (!alive) return;
+
+          setChats(nextChats);
+          setActiveChatId((prev) => {
+            if (routeChatId && nextChats.some((chat) => chat.id === routeChatId)) {
+              return routeChatId;
+            }
+
+            if (prev && nextChats.some((chat) => chat.id === prev)) {
+              return prev;
+            }
+
+            return nextChats[0]?.id ?? null;
+          });
+        } catch (error) {
+          console.error("chat list refresh error:", error);
+        }
+      }, 150);
     };
 
-    const unsubscribe = subscribeToChatList(client, currentUserId, (event) => {
-      void applyChatListEvent(event);
-    });
+    const unsubscribe = subscribeToChatList(client, currentProfile.id, runRefresh);
 
     return () => {
-      active = false;
+      alive = false;
+      if (refreshTimer !== null) {
+        window.clearTimeout(refreshTimer);
+      }
       unsubscribe();
     };
-  }, [activeChatId, authClient, currentProfile?.id, isAuthenticated]);
-
-
-  useEffect(() => {
-    if (!isAuthenticated || !authClient || !currentProfile?.id) return;
-
-    const controller = subscribeToPresence(
-      authClient,
-      currentProfile.id,
-      activeChatId,
-      (nextPresence) => {
-        setPresenceState(nextPresence);
-        setCurrentProfile((prev) => (prev ? patchPresence(prev, nextPresence) : prev));
-        setUsers((prev) => prev.map((profile) => patchPresence(profile, nextPresence)));
-      },
-    );
-
-    presenceControllerRef.current = controller;
-
-    return () => {
-      if (presenceControllerRef.current === controller) {
-        presenceControllerRef.current = null;
-      }
-      controller.unsubscribe();
-    };
-  }, [activeChatId, authClient, currentProfile?.id, isAuthenticated]);
+  }, [authClient, currentProfile, isAuthenticated, routeChatId]);
 
   useEffect(() => {
-    if (!isAuthenticated || !authClient || !activeChatId || !currentProfile?.id) {
+    if (!isAuthenticated || !authClient || !activeChatId) {
       setMessages([]);
       setLoadingMessages(false);
       return;
@@ -654,10 +402,7 @@ export default function App() {
       try {
         const nextMessages = await fetchMessages(client, activeChatId);
         if (!active) return;
-        unreadCountRef.current[activeChatId] = 0;
         setMessages(nextMessages);
-        setChats((prev) => resetChatUnread(prev, activeChatId));
-        await presenceControllerRef.current?.updateView(activeChatId);
       } catch (err: unknown) {
         if (!active) return;
         setError(err instanceof Error ? err.message : "Не удалось загрузить сообщения.");
@@ -672,13 +417,72 @@ export default function App() {
 
     const unsubscribe = subscribeToConversation(client, activeChatId, () => {
       void loadConversation();
+      if (currentProfile) {
+        void fetchChats(client, currentProfile.id).then((nextChats) => {
+          setChats(nextChats);
+        });
+      }
     });
 
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [activeChatId, authClient, currentProfile?.id, isAuthenticated]);
+  }, [activeChatId, authClient, currentProfile, isAuthenticated]);
+
+
+  useEffect(() => {
+    if (readReceiptRef.current) {
+      readReceiptRef.current.unsubscribe();
+      readReceiptRef.current = null;
+    }
+
+    if (!isAuthenticated || !authClient || !activeChatId || !currentProfile) {
+      return;
+    }
+
+    const controller = subscribeToReadReceipts(authClient, activeChatId, (payload) => {
+      if (!payload || payload.viewerId === currentProfile.id) return;
+
+      const seenAt = payload.lastReadAt ? new Date(payload.lastReadAt).getTime() : Date.now();
+
+      setMessages((prev) =>
+        prev.map((message) => {
+          if (message.chatId !== activeChatId) return message;
+          if (message.senderId !== currentProfile.id) return message;
+
+          const createdAt = new Date(message.createdAt).getTime();
+          if (Number.isNaN(createdAt) || createdAt > seenAt) return message;
+
+          return {
+            ...message,
+            seen: true,
+            status: "seen",
+          };
+        }),
+      );
+    });
+
+    readReceiptRef.current = controller;
+
+    return () => {
+      controller.unsubscribe();
+      if (readReceiptRef.current === controller) {
+        readReceiptRef.current = null;
+      }
+    };
+  }, [activeChatId, authClient, currentProfile, isAuthenticated]);
+
+  useEffect(() => {
+    if (!activeChatId || !currentProfile) return;
+    if (!readReceiptRef.current) return;
+    if (loadingMessages) return;
+
+    const hasMessagesInActiveChat = messages.some((message) => message.chatId === activeChatId);
+    if (!hasMessagesInActiveChat) return;
+
+    readReceiptRef.current.notifyRead(currentProfile.id, new Date().toISOString());
+  }, [activeChatId, currentProfile, loadingMessages, messages]);
 
   const filteredChats = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -689,78 +493,39 @@ export default function App() {
     );
   }, [search, chats]);
 
-  useEffect(() => {
-    if (!isAuthenticated || !authClient || !currentProfile?.id) {
-      setSearchResults([]);
-      return;
-    }
+  const searchResults = useMemo(() => {
+    const term = search.trim().replace(/^@/, "").toLowerCase();
+    if (!term || !currentProfile) return [];
 
-    const client = authClient;
-    const currentUserId = currentProfile.id;
-    const term = search.trim();
-    if (!term) {
-      setSearchResults([]);
-      return;
-    }
-
-    let active = true;
-    const timer = window.setTimeout(() => {
-      void searchUsers(client, currentUserId, term)
-        .then((foundUsers) => {
-          if (!active) return;
-
-          const existingPeerIds = new Set(chats.map((chat) => chat.peerId).filter(Boolean));
-          setSearchResults(
-            foundUsers.map((user) => ({
-              ...user,
-              status: existingPeerIds.has(user.id) ? "Чат уже есть" : user.status,
-            })),
-          );
-        })
-        .catch((error) => {
-          if (!active) return;
-          console.error("searchUsers error:", error);
-          setSearchResults([]);
-        });
-    }, 200);
-
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
-  }, [authClient, chats, currentProfile?.id, isAuthenticated, search]);
-
+    const existingPeerIds = new Set(chats.map((chat) => chat.peerId).filter(Boolean));
+    return users
+      .filter((user) => {
+        const matches =
+          user.username.toLowerCase().includes(term) || user.name.toLowerCase().includes(term);
+        return matches && user.id !== currentProfile.id;
+      })
+      .sort((left, right) => left.username.localeCompare(right.username))
+      .slice(0, 8)
+      .map((user) => ({
+        ...user,
+        status: existingPeerIds.has(user.id) ? "Чат уже есть" : user.status,
+      }));
+  }, [chats, currentProfile, search, users]);
 
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId) || null,
     [activeChatId, chats],
   );
 
+  const activeMessages = useMemo(
+    () => messages.filter((message) => message.chatId === activeChatId),
+    [messages, activeChatId],
+  );
+
   const activePeer = useMemo(() => {
     if (!activeChat?.peerId) return null;
     return users.find((user) => user.id === activeChat.peerId) || null;
   }, [activeChat, users]);
-
-  const activeMessages = useMemo(() => {
-    const baseMessages = messages.filter((message) => message.chatId === activeChatId);
-
-    if (!currentProfile?.id || !activeChatId) {
-      return baseMessages;
-    }
-
-    const peerId = activeChat?.peerId ?? null;
-    const peerOnline = peerId ? Boolean(presenceState[peerId]?.online) : false;
-    const peerViewingChat = peerId ? presenceState[peerId]?.activeChatId === activeChatId : false;
-    const peerLastReadAt = peerId ? presenceState[peerId]?.lastReadAt ?? null : null;
-
-    return decorateMessagesWithDeliveryState(
-      baseMessages,
-      currentProfile.id,
-      peerOnline,
-      peerViewingChat,
-      peerLastReadAt,
-    );
-  }, [activeChat?.peerId, activeChatId, currentProfile?.id, messages, presenceState]);
 
   const replyPreview = useMemo(
     () => findMessageById(activeMessages, replyTo || undefined),
@@ -837,6 +602,18 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [playingVoiceId, messages]);
 
+  async function refreshChats(keepChatId?: string | null) {
+    if (!authClient || !currentProfile) return;
+    const client = authClient;
+    const nextChats = await fetchChats(client, currentProfile.id);
+    setChats(nextChats);
+    setActiveChatId((prev) => {
+      const target = keepChatId ?? prev;
+      if (target && nextChats.some((chat) => chat.id === target)) return target;
+      return nextChats[0]?.id ?? null;
+    });
+  }
+
   async function handleSend() {
     if (!currentProfile || !activeChat || !authClient) return;
 
@@ -845,23 +622,8 @@ export default function App() {
     const hasVoice = pendingVoiceSeconds !== null;
     if (!trimmed && !hasVoice) return;
 
-    const preview = hasVoice ? "🎤 Голосовое сообщение" : trimmed || "Сообщение";
-    const optimisticMessage = createOptimisticMessage({
-      chatId: activeChat.id,
-      senderId: currentProfile.id,
-      text: trimmed,
-      replyTo,
-      voice: hasVoice ? pendingVoiceSeconds : null,
-    });
-
     setSending(true);
     setError(null);
-    setMessages((prev) => [...prev, optimisticMessage]);
-    setChats((prev) =>
-      patchChatPreview(prev, activeChat.id, preview, optimisticMessage.createdAt, {
-        resetUnread: true,
-      }),
-    );
 
     try {
       await sendMessageToConversation(client, {
@@ -879,20 +641,10 @@ export default function App() {
       setRecordStart(null);
       setSendPulse(true);
       window.setTimeout(() => setSendPulse(false), 280);
-
+      await refreshChats(activeChat.id);
       const nextMessages = await fetchMessages(client, activeChat.id);
       setMessages(nextMessages);
     } catch (err: unknown) {
-      setMessages((prev) =>
-        prev.map((message) =>
-          message.id === optimisticMessage.id
-            ? {
-                ...message,
-                status: "error",
-              }
-            : message,
-        ),
-      );
       setError(err instanceof Error ? err.message : "Не удалось отправить сообщение.");
     } finally {
       window.setTimeout(() => setSending(false), 220);
@@ -925,17 +677,7 @@ export default function App() {
 
     try {
       const chatId = await createOrGetDirectConversation(client, currentProfile.id, userId);
-      const nextChat = await fetchChatById(client, currentProfile.id, chatId);
-      if (nextChat) {
-        unreadCountRef.current[chatId] = 0;
-        setChats((prev) =>
-          upsertChat(prev, {
-            ...nextChat,
-            unread: 0,
-          }),
-        );
-      }
-
+      await refreshChats(chatId);
       const nextMessages = await fetchMessages(client, chatId);
       setMessages(nextMessages);
       setActiveChatId(chatId);
@@ -974,9 +716,7 @@ export default function App() {
   }
 
   function selectChat(chatId: string) {
-    unreadCountRef.current[chatId] = 0;
     setActiveChatId(chatId);
-    setChats((prev) => resetChatUnread(prev, chatId));
     setReplyTo(null);
     navigate(`/chat/${chatId}`);
     if (!isDesktop) {
