@@ -45,42 +45,88 @@ create policy "profiles_update_own"
 create index if not exists idx_profiles_username on public.profiles (username);
 create index if not exists idx_profiles_is_online_last_seen on public.profiles (is_online, last_seen desc);
 
--- Function to handle new user creation automatically (optional but good for consistency)
+-- Function to handle new user creation automatically
 create or replace function public.handle_new_user()
 returns trigger as $$
+declare
+  base_username text;
+  final_username text;
 begin
-  insert into public.profiles (
-    id, 
-    username, 
-    name, 
-    email, 
-    avatar_url, 
-    bio, 
-    phone, 
-    location, 
-    status
-  )
-  values (
-    new.id,
-    coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1), 'user_' || substr(new.id::text, 1, 6)),
-    coalesce(new.raw_user_meta_data->>'name', new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
-    new.email,
-    new.raw_user_meta_data->>'avatarDataUrl',
-    coalesce(new.raw_user_meta_data->>'bio', ''),
-    coalesce(new.raw_user_meta_data->>'phone', ''),
-    coalesce(new.raw_user_meta_data->>'location', ''),
-    coalesce(new.raw_user_meta_data->>'statusText', 'в сети')
-  )
-  on conflict (id) do update set
-    username = excluded.username,
-    name = excluded.name,
-    email = excluded.email,
-    avatar_url = excluded.avatar_url,
-    bio = excluded.bio,
-    phone = excluded.phone,
-    location = excluded.location,
-    status = excluded.status,
-    updated_at = now();
+  -- 1. Get base username from metadata or email
+  base_username := coalesce(
+    new.raw_user_meta_data->>'username', 
+    split_part(new.email, '@', 1), 
+    'user_' || substr(new.id::text, 1, 6)
+  );
+  
+  -- Ensure it's not empty or null
+  if base_username is null or base_username = '' then
+    base_username := 'user_' || substr(new.id::text, 1, 6);
+  end if;
+
+  final_username := base_username;
+
+  -- 2. Attempt to insert, with retry for username conflict
+  begin
+    insert into public.profiles (
+      id, 
+      username, 
+      name, 
+      email, 
+      avatar_url, 
+      bio, 
+      phone, 
+      location, 
+      status
+    )
+    values (
+      new.id,
+      final_username,
+      coalesce(new.raw_user_meta_data->>'name', final_username),
+      new.email,
+      new.raw_user_meta_data->>'avatarDataUrl',
+      coalesce(new.raw_user_meta_data->>'bio', ''),
+      coalesce(new.raw_user_meta_data->>'phone', ''),
+      coalesce(new.raw_user_meta_data->>'location', ''),
+      coalesce(new.raw_user_meta_data->>'statusText', 'в сети')
+    )
+    on conflict (id) do update set
+      username = excluded.username,
+      name = excluded.name,
+      email = excluded.email,
+      avatar_url = excluded.avatar_url,
+      bio = excluded.bio,
+      phone = excluded.phone,
+      location = excluded.location,
+      status = excluded.status,
+      updated_at = now();
+  exception when unique_violation then
+    -- If username is taken, append random suffix and try again
+    final_username := base_username || '_' || floor(random() * 10000)::text;
+    
+    insert into public.profiles (
+      id, username, name, email, avatar_url, bio, phone, location, status
+    )
+    values (
+      new.id,
+      final_username,
+      coalesce(new.raw_user_meta_data->>'name', final_username),
+      new.email,
+      new.raw_user_meta_data->>'avatarDataUrl',
+      coalesce(new.raw_user_meta_data->>'bio', ''),
+      coalesce(new.raw_user_meta_data->>'phone', ''),
+      coalesce(new.raw_user_meta_data->>'location', ''),
+      coalesce(new.raw_user_meta_data->>'statusText', 'в сети')
+    )
+    on conflict (id) do update set
+      username = excluded.username,
+      updated_at = now();
+  when others then
+    -- Last resort: don't fail the registration even if profile creation fails
+    -- The user can manually create profile later or we'll handle it in the frontend
+    return new;
+  end;
+
   return new;
 end;
 $$ language plpgsql security definer;
