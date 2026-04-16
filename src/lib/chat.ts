@@ -328,16 +328,19 @@ export async function fetchChats(client: SupabaseClient, currentUserId: string):
     throw new Error(conversationsResult.error.message || "Не удалось загрузить чаты.");
   }
 
-  const participantsResult = await client
+  let participantsResult = await client
     .from("conversation_participants")
     .select("conversation_id,user_id,last_read_at")
     .in("conversation_id", conversationIds);
 
-  if (participantsResult.error) {
-    if (isMissingSchemaError(participantsResult.error.message)) {
-      return [];
-    }
+  if (participantsResult.error && isMissingSchemaError(participantsResult.error.message)) {
+    participantsResult = await client
+      .from("conversation_participants")
+      .select("conversation_id,user_id")
+      .in("conversation_id", conversationIds);
+  }
 
+  if (participantsResult.error) {
     throw new Error(participantsResult.error.message || "Не удалось загрузить участников.");
   }
 
@@ -703,6 +706,9 @@ export async function updateReadStatus(
     .eq("user_id", userId);
 
   if (error) {
+    if (isMissingSchemaError(error.message)) {
+      return;
+    }
     console.error("updateReadStatus error:", error);
   }
 }

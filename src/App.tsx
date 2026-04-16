@@ -138,17 +138,21 @@ function applyPeerReadCursor(
   const readTime = peerReadAt ? new Date(peerReadAt).getTime() : null;
 
   return messages.map((message) => {
+    // Если сообщение не наше (пришло от собеседника), оно не имеет статуса "прочитано" для нас в плане индикатора
     if (message.senderId !== currentUserId) {
-      const status: MessageStatus = message.status === "error" ? "error" : "sent";
       return {
         ...message,
         seen: false,
-        status,
+        status: "sent" as MessageStatus,
       };
     }
 
+    // Для наших сообщений проверяем, прочитал ли их собеседник
     const isSeen = readTime !== null && new Date(message.createdAt).getTime() <= readTime;
-    const status: MessageStatus = message.status === "error" ? "error" : isSeen ? "seen" : "sent";
+    
+    let status: MessageStatus = "sent";
+    if (message.status === "error") status = "error";
+    else if (isSeen) status = "seen";
 
     return {
       ...message,
@@ -913,7 +917,7 @@ export default function App() {
       voice: hasVoice ? pendingVoiceSeconds || undefined : undefined,
       voiceUrl: null,
       reactions: [],
-      status: "sent",
+      status: "sending",
       seen: false,
     };
 
@@ -940,6 +944,12 @@ export default function App() {
         replyTo: replyTo || undefined,
         voice: hasVoice ? pendingVoiceSeconds || undefined : undefined,
       });
+
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === optimisticId ? { ...message, status: "sent" } : message,
+        ),
+      );
 
       setDraft("");
       setReplyTo(null);

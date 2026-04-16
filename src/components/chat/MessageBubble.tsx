@@ -1,5 +1,5 @@
 import React, { memo, useMemo } from "react";
-import { Flame, Heart, MessageCircle, Pause, Play, ThumbsUp } from "lucide-react";
+import { Check, CheckCheck, Clock, AlertCircle, Flame, Heart, MessageCircle, Pause, Play, ThumbsUp } from "lucide-react";
 import type { Message, Reaction } from "../../chat-types";
 
 type MessageBubbleProps = {
@@ -77,15 +77,15 @@ function MessageBubble({
         groupedWithNext ? "rounded-bl-xl" : "rounded-bl-[22px]"
       } rounded-tr-[22px] rounded-br-[22px]`;
 
-  const indicatorTone = mine
-    ? message.status === "seen" || message.seen
-      ? "message-status-indicator message-status-read"
-      : message.status === "error"
-        ? "message-status-indicator message-status-error"
-        : "message-status-indicator message-status-sent"
-    : "";
-
   const showActions = hoveredMsg === message.id;
+
+  const StatusIcon = () => {
+    if (!mine) return null;
+    if (message.status === "error") return <AlertCircle className="h-3.5 w-3.5 text-red-500" />;
+    if (message.status === "sending") return <Clock className="h-3.5 w-3.5 text-slate-400 animate-pulse" />;
+    if (message.status === "seen" || message.seen) return <CheckCheck className="h-3.5 w-3.5 text-blue-500" />;
+    return <Check className="h-3.5 w-3.5 text-slate-400" />;
+  };
 
   return (
     <div
@@ -156,11 +156,7 @@ function MessageBubble({
         <div className={"mt-1.5 flex justify-between gap-4 text-[11px] " + (mine ? "text-slate-500" : "text-slate-400")}>
           <div className="flex flex-wrap items-center gap-2">
             <span>{timeLabel}</span>
-            {mine && (
-              <span className="inline-flex items-center gap-1.5">
-                <span className={indicatorTone} />
-              </span>
-            )}
+            <StatusIcon />
           </div>
 
           {message.reactions.length > 0 && (
