@@ -1497,10 +1497,9 @@ export default function App() {
                   >
                     <ProfileView 
                       myProfile={myProfile} 
-                      onSaveProfile={async (data) => {
-                        if (data.name) updateMyProfileDraft("name", data.name);
-                        if (data.bio) updateMyProfileDraft("bio", data.bio);
-                        if (data.avatarFile) setAvatarFile(data.avatarFile);
+                      draft={myProfileDraft}
+                      onUpdateDraft={(field, value) => updateMyProfileDraft(field as any, value)}
+                      onSaveProfile={async () => {
                         await saveMyProfile();
                       }}
                     />

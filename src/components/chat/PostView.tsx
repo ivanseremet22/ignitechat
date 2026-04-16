@@ -1,20 +1,29 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, MoreHorizontal, Check, ChevronDown, Camera, PencilLine, Save } from "lucide-react";
-import { UserProfile } from "../../chat-types";
+import { UserProfile, ProfileDraft } from "../../chat-types";
 
 type ProfileViewProps = {
   myProfile: UserProfile | null;
-  onSaveProfile?: (data: Partial<UserProfile> & { avatarFile?: File }) => Promise<void>;
+  draft: ProfileDraft;
+  onUpdateDraft: (field: string, value: string) => void;
+  onSaveProfile: () => Promise<void>;
 };
 
-export default function ProfileView({ myProfile, onSaveProfile }: ProfileViewProps) {
+export default function ProfileView({ myProfile, draft, onUpdateDraft, onSaveProfile }: ProfileViewProps) {
   const [status, setStatus] = useState<"going" | "not" | "maybe">("going");
   const [isEditing, setIsEditing] = useState(false);
-  const [editName, setEditName] = useState(myProfile?.name || "Housewarming Party");
-  const [editBio, setEditBio] = useState(myProfile?.bio || "We've just moved to New York! And warmer weather means housewarming!");
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(myProfile?.avatarUrl || null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Initialize draft if it's empty and we have a profile
+  useEffect(() => {
+    if (myProfile && !draft.name) {
+      onUpdateDraft("name", myProfile.name);
+    }
+    if (myProfile && !draft.bio) {
+      onUpdateDraft("bio", myProfile.bio || "");
+    }
+  }, [myProfile, draft.name, draft.bio, onUpdateDraft]);
 
   const handlePhotoClick = () => {
     if (isEditing) fileInputRef.current?.click();
@@ -25,23 +34,18 @@ export default function ProfileView({ myProfile, onSaveProfile }: ProfileViewPro
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setAvatarPreview(reader.result as string);
+        onUpdateDraft("avatarDataUrl", reader.result as string);
       };
       reader.readAsDataURL(file);
     }
   };
 
   const handleSave = async () => {
-    if (onSaveProfile) {
-      const avatarFile = fileInputRef.current?.files?.[0];
-      await onSaveProfile({
-        name: editName,
-        bio: editBio,
-        avatarFile
-      });
-    }
+    await onSaveProfile();
     setIsEditing(false);
   };
+
+  const avatarPreview = draft.avatarDataUrl || myProfile?.avatarUrl;
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black">
@@ -62,14 +66,14 @@ export default function ProfileView({ myProfile, onSaveProfile }: ProfileViewPro
           <div className="w-full max-w-[280px]">
             {isEditing ? (
               <input
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
+                value={draft.name}
+                onChange={(e) => onUpdateDraft("name", e.target.value)}
                 className="text-glow w-full bg-transparent text-center text-2xl font-bold tracking-tight text-white outline-none border-b border-white/20"
                 autoFocus
               />
             ) : (
               <h1 className="text-glow truncate text-center text-2xl font-bold tracking-tight text-white">
-                {editName}
+                {draft.name || myProfile?.name || "Profile"}
               </h1>
             )}
           </div>
@@ -179,18 +183,18 @@ export default function ProfileView({ myProfile, onSaveProfile }: ProfileViewPro
              />
           </div>
           <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-blue-400">
-            Hosted by {editName.split(' ')[0]}
+            Hosted by {(draft.name || myProfile?.name || "User").split(' ')[0]}
           </h3>
           
           {isEditing ? (
             <textarea
-              value={editBio}
-              onChange={(e) => setEditBio(e.target.value)}
+              value={draft.bio}
+              onChange={(e) => onUpdateDraft("bio", e.target.value)}
               className="mb-4 w-full bg-transparent text-center text-xs font-medium leading-relaxed text-white/70 outline-none border-b border-white/10 resize-none h-20"
             />
           ) : (
             <p className="mb-4 text-xs font-medium leading-relaxed text-white/70 whitespace-pre-line">
-              {editBio}
+              {draft.bio || myProfile?.bio || "No bio yet."}
             </p>
           )}
 
