@@ -47,7 +47,7 @@ export default function ProfileView({ myProfile, onSaveProfile }: ProfileViewPro
     <div className="relative h-full w-full overflow-hidden bg-black">
       {/* Background Image - User's Profile Photo */}
       <div 
-        className={`absolute inset-0 z-0 bg-cover bg-center transition-all duration-700 ${isEditing ? 'scale-110 blur-sm' : ''}`}
+        className={`absolute inset-0 z-0 bg-cover bg-center transition-all duration-400 ${isEditing ? 'scale-110 blur-sm' : ''}`}
         style={{ 
           backgroundImage: `url('${avatarPreview || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=1000&auto=format&fit=crop'}')`,
           filter: isEditing ? 'brightness(0.5)' : 'brightness(0.7) contrast(1.1)'
@@ -131,13 +131,13 @@ export default function ProfileView({ myProfile, onSaveProfile }: ProfileViewPro
                 x: status === "going" ? "0%" : status === "not" ? "100%" : "200%",
                 width: "33.333%"
               }}
-              transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+              transition={{ type: "spring", bounce: 0.1, duration: 0.3 }}
             />
           </div>
 
           <button 
             onClick={() => setStatus("going")}
-            className={`relative z-10 flex flex-1 items-center justify-center gap-2 h-full transition-colors duration-300 ${status === "going" ? "text-green-600" : "text-white/60"}`}
+            className={`relative z-10 flex flex-1 items-center justify-center gap-2 h-full transition-colors duration-200 ${status === "going" ? "text-green-600" : "text-white/60"}`}
           >
             {status === "going" && <Check size={14} strokeWidth={3} />}
             <span className="text-xs font-bold">Going</span>
