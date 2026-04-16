@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { X, MoreHorizontal, Check, ChevronDown, Camera, PencilLine, Save } from "lucide-react";
+import { motion, useScroll, useTransform, useSpring } from "framer-motion";
+import { X, MoreHorizontal, Check, ChevronDown, Camera, PencilLine, Save, HelpCircle } from "lucide-react";
 import { UserProfile, ProfileDraft } from "../../chat-types";
 
 type ProfileViewProps = {
@@ -11,11 +11,35 @@ type ProfileViewProps = {
 };
 
 export default function ProfileView({ myProfile, draft, onUpdateDraft, onSaveProfile }: ProfileViewProps) {
-  const [status, setStatus] = useState<"going" | "not" | "maybe">("going");
   const [isEditing, setIsEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState("Going");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Initialize draft if it's empty and we have a profile
+  const { scrollY } = useScroll({
+    container: containerRef
+  });
+
+  const smoothScrollY = useSpring(scrollY, {
+    stiffness: 70, // More weighted feel
+    damping: 40,   // More control, less bounce
+    mass: 1,
+    restDelta: 0.001
+  });
+
+  // Background Blur/Scale on Scroll
+  const bgBlur = useTransform(smoothScrollY, [0, 200], ["0px", "10px"]);
+  const bgScale = useTransform(smoothScrollY, [0, 300], [1, 1.05]);
+  
+  // Content Fade on Scroll
+  const initialTextOpacity = useTransform(smoothScrollY, [0, 100], [1, 0]);
+  
+  // Bottom Card Expansion - Using absolute positioning for better control
+  const cardYPos = useTransform(smoothScrollY, [0, 500], ["85vh", "0vh"]); 
+  const cardHeight = useTransform(smoothScrollY, [0, 500], ["15vh", "100vh"]);
+  const cardRadius = useTransform(smoothScrollY, [0, 500], ["40px", "0px"]); 
+
+  // Initialize draft
   useEffect(() => {
     if (myProfile && !draft.name) {
       onUpdateDraft("name", myProfile.name);
@@ -45,62 +69,53 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
     setIsEditing(false);
   };
 
-  const avatarPreview = draft.avatarDataUrl || myProfile?.avatarUrl;
+  const avatarPreview = draft.avatarDataUrl || myProfile?.avatarUrl || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=1000&auto=format&fit=crop';
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-black">
-      {/* Background Image - User's Profile Photo */}
-      <div 
-        className={`absolute inset-0 z-0 bg-cover bg-center transition-all duration-400 ${isEditing ? 'scale-110 blur-sm' : ''}`}
-        style={{ 
-          backgroundImage: `url('${avatarPreview || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=1000&auto=format&fit=crop'}')`,
-          filter: isEditing ? 'brightness(0.5)' : 'brightness(0.7) contrast(1.1)'
-        }}
-      />
-      <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/20 via-transparent to-black/90" />
+    <div className="relative h-full w-full overflow-hidden bg-black font-sans no-scrollbar">
+      {/* Background Image Container */}
+      <div className="absolute inset-0 z-0 overflow-hidden bg-black">
+        <motion.div 
+          style={{ 
+            backgroundImage: `url('${avatarPreview}')`,
+            filter: `brightness(0.7) blur(${bgBlur})`,
+            scale: bgScale
+          }}
+          className="h-full w-full bg-cover bg-center"
+        />
+        <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/40 via-transparent to-black/95 pointer-events-none" />
+      </div>
 
-      {/* Top Bar */}
-      <div className="relative z-20 flex min-h-[100px] items-center px-6 pt-12">
-        {/* Absolute centering container */}
-        <div className="absolute inset-x-0 top-12 flex items-center justify-center px-20">
-          <div className="w-full max-w-[280px]">
-            {isEditing ? (
-              <input
-                value={draft.name}
-                onChange={(e) => onUpdateDraft("name", e.target.value)}
-                className="text-glow w-full bg-transparent text-center text-2xl font-bold tracking-tight text-white outline-none border-b border-white/20"
-                autoFocus
-              />
-            ) : (
-              <h1 className="text-glow truncate text-center text-2xl font-bold tracking-tight text-white">
-                {draft.name || myProfile?.name || "Profile"}
-              </h1>
-            )}
-          </div>
-        </div>
-
-        {/* Buttons remain in flow but outside the centered name */}
-        <button className="relative z-30 flex h-10 w-10 items-center justify-center rounded-full glass-surface text-white">
+      {/* Top Header Buttons */}
+      <div className="relative z-[110] flex items-center justify-between px-6 pt-12">
+        <button className="relative z-30 flex h-10 w-10 items-center justify-center rounded-full glass-surface text-white hover:bg-white/10 transition-colors">
           <X size={20} />
         </button>
 
-        <div className="relative z-30 ml-auto flex gap-2">
+        {/* Centered Name Header */}
+        <div className="absolute inset-x-0 top-12 flex items-center justify-center px-20">
+          <h1 className="text-xl font-bold text-white tracking-tight drop-shadow-xl truncate max-w-[200px]">
+            {draft.name || myProfile?.name || "Profile"}
+          </h1>
+        </div>
+        
+        <div className="relative z-30 flex items-center gap-2">
           {isEditing ? (
             <button 
               onClick={handleSave}
-              className="flex h-10 px-4 items-center justify-center gap-2 rounded-full bg-white text-black font-bold text-xs shadow-xl"
+              className="flex h-10 px-4 items-center justify-center gap-2 rounded-full bg-white text-black font-bold text-xs shadow-xl hover:bg-white/90 transition-colors"
             >
               <Save size={16} /> Save
             </button>
           ) : (
             <button 
               onClick={() => setIsEditing(true)}
-              className="flex h-10 w-10 items-center justify-center rounded-full glass-surface text-white"
+              className="flex h-10 w-10 items-center justify-center rounded-full glass-surface text-white hover:bg-white/10 transition-colors"
             >
-              <PencilLine size={20} />
+              <PencilLine size={18} />
             </button>
           )}
-          <button className="flex h-10 w-10 items-center justify-center rounded-full glass-surface text-white">
+          <button className="flex h-10 w-10 items-center justify-center rounded-full glass-surface text-white hover:bg-white/10 transition-colors">
             <MoreHorizontal size={20} />
           </button>
         </div>
@@ -114,101 +129,139 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
         onChange={handleFileChange} 
       />
 
-      {/* Content */}
-      <div className="relative z-20 flex h-full flex-col justify-end pb-32 px-6">
-        <div className="mb-8 text-center">
-          <div className="space-y-1 text-sm font-medium text-white/70">
-            <p>19 September, 12 pm</p>
-            <p>1559 Audubon Ave</p>
-            <p>New York, NY</p>
-          </div>
-        </div>
+      {/* Scrollable Content Container */}
+      <div 
+        ref={containerRef}
+        className="relative z-20 h-full overflow-y-auto no-scrollbar pt-[25vh]"
+      >
+        <div className="h-[1200px] w-full flex flex-col items-center">
+          {/* Central Information Section */}
+          <motion.div 
+            style={{ opacity: initialTextOpacity }}
+            className="flex flex-col items-center text-center px-8"
+          >
+            <h1 className="text-4xl font-bold tracking-tight text-white mb-6 drop-shadow-2xl">
+              Housewarming Party
+            </h1>
+            <div className="space-y-1 text-base font-medium text-white/70">
+              <p>19 September, 12 pm</p>
+              <p>1559 Audubon Ave</p>
+              <p>New York, NY</p>
+            </div>
 
-        {/* Toggle Buttons with smooth animation */}
-        <div className="glass-surface relative mb-8 flex h-14 w-full items-center rounded-2xl p-1.5 overflow-hidden">
-          <div className="absolute inset-1.5 flex w-[calc(100%-12px)] pointer-events-none">
-            <motion.div
-              layoutId="profileStatusGlow"
-              className="h-full rounded-xl bg-white shadow-[0_0_20px_rgba(255,255,255,0.2)]"
-              initial={false}
-              animate={{
-                x: status === "going" ? "0%" : status === "not" ? "100%" : "200%",
-                width: "33.333%"
-              }}
-              transition={{ type: "spring", bounce: 0.1, duration: 0.3 }}
+            {/* Segmented Control Tabs */}
+            <div className="mt-10 flex w-[320px] items-center gap-1 rounded-[24px] bg-black/30 p-1 backdrop-blur-xl border border-white/10">
+              <button
+                onClick={() => setActiveTab("Going")}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-[20px] py-3 text-xs font-bold transition-all duration-300 ${
+                  activeTab === "Going" ? "bg-white text-green-600 shadow-xl" : "text-white/40"
+                }`}
+              >
+                <Check size={14} className={activeTab === "Going" ? "text-green-600" : "text-white/40"} />
+                Going
+              </button>
+              <button
+                onClick={() => setActiveTab("Not Going")}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-[20px] py-3 text-xs font-bold transition-all duration-300 ${
+                  activeTab === "Not Going" ? "bg-white text-red-600 shadow-xl" : "text-white/40"
+                }`}
+              >
+                <X size={14} className={activeTab === "Not Going" ? "text-red-600" : "text-white/40"} />
+                Not Going
+              </button>
+              <button
+                onClick={() => setActiveTab("Maybe")}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-[20px] py-3 text-xs font-bold transition-all duration-300 ${
+                  activeTab === "Maybe" ? "bg-white text-blue-600 shadow-xl" : "text-white/40"
+                }`}
+              >
+                <HelpCircle size={14} className={activeTab === "Maybe" ? "text-blue-600" : "text-white/40"} />
+                Maybe
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+
+      {/* Fixed Card Container - Peeks from the bottom and expands */}
+       <motion.div 
+         style={{ 
+           y: cardYPos,
+           height: cardHeight,
+           borderRadius: cardRadius,
+         }}
+         className="fixed left-0 right-0 top-0 z-30 glass-card-dark overflow-y-auto no-scrollbar p-8 shadow-2xl backdrop-blur-3xl px-6 sm:px-12 pointer-events-auto"
+       >
+        {/* Scroll Indicator Handle */}
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-white/20" />
+
+        <div className="flex flex-col items-center text-center mt-2 pb-24">
+          <div className="mb-4 flex justify-center">
+            <img 
+              src={avatarPreview || "https://api.dicebear.com/7.x/avataaars/svg?seed=Andre"} 
+              alt="Host" 
+              className="h-10 w-10 rounded-full border-2 border-white/20 shadow-xl"
             />
           </div>
-
-          <button 
-            onClick={() => setStatus("going")}
-            className={`relative z-10 flex flex-1 items-center justify-center gap-2 h-full transition-colors duration-200 ${status === "going" ? "text-green-600" : "text-white/60"}`}
-          >
-            {status === "going" && <Check size={14} strokeWidth={3} />}
-            <span className="text-xs font-bold">Going</span>
-          </button>
-          <button 
-            onClick={() => setStatus("not")}
-            className={`relative z-10 flex flex-1 items-center justify-center h-full transition-colors duration-300 ${status === "not" ? "text-red-500" : "text-white/60"}`}
-          >
-             <span className="text-xs font-bold">Not Going</span>
-          </button>
-          <button 
-            onClick={() => setStatus("maybe")}
-            className={`relative z-10 flex flex-1 items-center justify-center h-full transition-colors duration-300 ${status === "maybe" ? "text-gray-800" : "text-white/60"}`}
-          >
-             <span className="text-xs font-bold">Maybe</span>
-          </button>
-        </div>
-
-        {/* Profile Info Card */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass-card-dark relative rounded-[32px] p-6 text-center group"
-        >
-          {isEditing && (
-            <div 
-              onClick={handlePhotoClick}
-              className="absolute inset-0 z-30 flex items-center justify-center rounded-[32px] bg-black/40 cursor-pointer"
-            >
-              <Camera size={32} className="text-white animate-pulse" />
-            </div>
-          )}
-
-          <div className="mb-4 flex justify-center">
-             <img 
-               src={avatarPreview || "https://api.dicebear.com/7.x/avataaars/svg?seed=Andre"} 
-               alt="Host" 
-               className="h-10 w-10 rounded-full border border-white/20"
-             />
-          </div>
-          <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-blue-400">
-            Hosted by {(draft.name || myProfile?.name || "User").split(' ')[0]}
+          
+          <h3 className="mb-2 text-sm font-bold text-blue-400">
+            Hosted by {draft.name || myProfile?.name || "Andre Lorico"}
           </h3>
           
-          {isEditing ? (
-            <textarea
-              value={draft.bio}
-              onChange={(e) => onUpdateDraft("bio", e.target.value)}
-              className="mb-4 w-full bg-transparent text-center text-xs font-medium leading-relaxed text-white/70 outline-none border-b border-white/10 resize-none h-20"
-            />
-          ) : (
-            <p className="mb-4 text-xs font-medium leading-relaxed text-white/70 whitespace-pre-line">
-              {draft.bio || myProfile?.bio || "No bio yet."}
+          <div className="w-full space-y-4 px-4">
+            <p className="text-sm font-medium leading-relaxed text-white/90">
+              We've just moved to New York!<br />
+              And warmer weather means<br />
+              housewarming!
             </p>
-          )}
+            <p className="text-xs font-medium leading-relaxed text-white/50">
+              We'll have light refreshments, drinks and<br />
+              BBQing in the evening. Stop by to hang<br />
+              out, catch up and friends meet friends!
+            </p>
+            {/* Added more content to test scrolling within the card */}
+            <p className="text-xs font-medium leading-relaxed text-white/40">
+              Join us for a wonderful evening filled with music and laughter.
+            </p>
+          </div>
+        </div>
 
-          <p className="text-[11px] leading-relaxed text-white/40">
-            We'll have light refreshments, drinks and<br />
-            BBQing in the evening. Stop by to hang<br />
-            out, catch up and friends meet friends!
-          </p>
-        </motion.div>
+        {isEditing && (
+          <div 
+            onClick={handlePhotoClick}
+            className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 cursor-pointer"
+          >
+            <Camera size={32} className="text-white animate-pulse" />
+          </div>
+        )}
+      </motion.div>
 
-        <button className="mt-8 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
-           Scroll Down to see full post
-           <ChevronDown size={14} className="rounded-full border border-white/20 p-0.5" />
-        </button>
+      {/* Floating Scroll Indicator Pill */}
+      <motion.div 
+        style={{ opacity: initialTextOpacity }}
+        className="fixed bottom-10 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-black/40 px-6 py-3 border border-white/10 text-[10px] font-bold uppercase tracking-widest text-white/70 backdrop-blur-xl pointer-events-none"
+      >
+         Scroll Down to see full post
+         <ChevronDown size={14} className="animate-bounce" />
+      </motion.div>
+
+      {/* Profile Edit Toggle Button */}
+      <div className="fixed top-12 right-20 z-[110]">
+        {isEditing ? (
+          <button 
+            onClick={handleSave}
+            className="flex h-10 px-4 items-center justify-center gap-2 rounded-full bg-white text-black font-bold text-xs shadow-xl"
+          >
+            <Save size={16} /> Save
+          </button>
+        ) : (
+          <button 
+            onClick={() => setIsEditing(true)}
+            className="flex h-10 w-10 items-center justify-center rounded-full glass-surface text-white"
+          >
+            <PencilLine size={18} />
+          </button>
+        )}
       </div>
     </div>
   );
