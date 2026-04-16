@@ -109,14 +109,14 @@ export default function ChatView({
   return (
     <>
       <header
-        className="chat-header-shell mobile-no-blur relative z-10 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,249,240,0.92))] px-2.5 py-2.5 md:px-5 lg:px-6"
-        style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
+        className="chat-header-shell relative z-20 px-6 py-6"
+        style={{ paddingTop: "max(1.5rem, env(safe-area-inset-top))" }}
       >
-        <div className="flex items-center gap-2 md:gap-3">
+        <div className="glass-panel-heavy flex items-center gap-4 rounded-[32px] px-4 py-3 shadow-2xl">
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 md:hidden"
+            className="h-10 w-10 shrink-0 rounded-full glass-panel text-white/60 hover:text-white md:hidden"
             onClick={() => setMobileSidebarOpen(true)}
           >
             <Menu className="h-5 w-5" />
@@ -125,22 +125,24 @@ export default function ChatView({
           <button
             type="button"
             onClick={openPeerProfile}
-            className="group flex min-w-0 items-center gap-2.5 rounded-2xl transition hover:bg-white/70 md:gap-3"
+            className="group flex min-w-0 items-center gap-3 rounded-2xl p-1 transition hover:bg-white/5"
           >
-            <Avatar className="h-10 w-10 md:h-11 md:w-11">
-              <AvatarFallback className={`bg-gradient-to-br ${activeProfile?.accent || "from-amber-400 to-orange-300"} text-slate-900`}>
-                {activeChat.avatar}
-              </AvatarFallback>
-            </Avatar>
+            <div className="relative">
+                <Avatar className="h-10 w-10 rounded-xl border border-white/10 shadow-lg">
+                  <AvatarFallback className="bg-[#7C3AED] text-white font-bold">
+                    {activeChat.avatar}
+                  </AvatarFallback>
+                </Avatar>
+                {activePeer?.status === "в сети" && (
+                    <div className="absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full border-2 border-black bg-emerald-500" />
+                )}
+            </div>
 
             <div className="min-w-0 flex-1 text-left">
-              <div className="truncate text-sm font-semibold md:text-[15px]">{activeChat.title}</div>
-              <div className="flex items-center gap-2 text-[10px] md:text-xs text-amber-600">
+              <div className="truncate text-sm font-bold text-white">{activeChat.title}</div>
+              <div className="text-[10px] font-medium text-white/30 uppercase tracking-widest">
                 {showTyping ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-1 w-1 animate-pulse rounded-full bg-amber-500 md:h-1.5 md:w-1.5" />
-                    typing…
-                  </span>
+                  <span className="text-[#7C3AED] animate-pulse">typing…</span>
                 ) : (
                   <span className="truncate">{activePeer?.status || "в сети"}</span>
                 )}
@@ -148,56 +150,47 @@ export default function ChatView({
             </div>
           </button>
 
-          <div className="ml-auto flex items-center gap-0.5 sm:gap-1.5">
+          <div className="ml-auto flex items-center gap-2">
             <Button
               variant="ghost"
               size="icon"
-              onClick={openMyProfile}
-              className="h-9 w-9 overflow-hidden rounded-full border border-slate-200/80 bg-white/90 p-0 shadow-sm hover:bg-white md:h-10 md:w-10"
+              className="h-10 w-10 rounded-full glass-panel text-white/40 hover:text-white"
             >
-              {myProfile ? (
-                <AppAvatar
-                  className="h-full w-full"
-                  initials={myProfile.avatar}
-                  imageUrl={myProfile.avatarUrl}
-                  accent={myProfile.accent}
-                  fallbackClassName="text-slate-900 text-xs"
-                />
-              ) : (
-                <UserRound className="h-4 w-4 md:h-5 md:w-5" />
-              )}
+              <Search className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" className="hidden lg:inline-flex">
-              <Search className="h-5 w-5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="hidden sm:inline-flex">
-              <Phone className="h-5 w-5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="hidden md:inline-flex">
-              <MoreVertical className="h-5 w-5" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 rounded-full bg-white text-black hover:bg-white/90 shadow-lg"
+              onClick={openMyProfile}
+            >
+              <UserRound className="h-4 w-4" />
             </Button>
           </div>
         </div>
       </header>
 
       {error && (
-        <div className="mx-3 mt-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 md:mx-5">
+        <div className="mx-4 mt-4 rounded-3xl border border-red-500/20 bg-red-500/10 px-5 py-4 text-xs font-bold uppercase tracking-widest text-red-400 backdrop-blur-xl">
           {error}
         </div>
       )}
 
-      <ScrollArea className="chat-scroll relative z-10 flex-1 px-2.5 py-3 md:px-5 lg:px-6">
-        <div className="w-full space-y-1">
+      <ScrollArea className="chat-scroll relative z-10 flex-1 px-4 py-6 md:px-8">
+        <div className="w-full space-y-6">
           {loadingMessages ? (
-            <div className="flex justify-center py-10">
-              <div className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs text-slate-500 shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
-                Загрузка сообщений...
+            <div className="flex justify-center py-12">
+              <div className="rounded-full bg-white/5 border border-white/10 px-6 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] text-white/30 backdrop-blur-xl shadow-2xl">
+                Loading encrypted messages...
               </div>
             </div>
           ) : activeMessages.length === 0 ? (
-            <div className="flex justify-center py-10">
-              <div className="rounded-2xl border border-slate-200/90 bg-white px-5 py-4 text-sm text-slate-500 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
-                В этом чате пока нет сообщений.
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-[32px] bg-white/5 border border-white/10 text-white/20">
+                <Send className="h-8 w-8" />
+              </div>
+              <div className="max-w-[240px] text-xs font-bold uppercase tracking-widest text-white/20">
+                No messages yet. Start the conversation.
               </div>
             </div>
           ) : (
@@ -210,8 +203,8 @@ export default function ChatView({
               return (
                 <React.Fragment key={message.id}>
                   {showDayDivider && (
-                    <div className="my-4 flex justify-center">
-                      <div className="rounded-full border border-slate-200/90 bg-white px-3 py-1 text-xs text-slate-500 shadow-[0_4px_12px_rgba(15,23,42,0.03)]">
+                    <div className="my-8 flex justify-center">
+                      <div className="rounded-full bg-white/5 border border-white/10 px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-white/20 backdrop-blur-md">
                         {formatDayLabel(message.createdAt)}
                       </div>
                     </div>
@@ -242,140 +235,138 @@ export default function ChatView({
       </ScrollArea>
 
       <footer
-        className="composer-shell mobile-no-blur relative z-10 bg-[linear-gradient(0deg,rgba(255,255,255,0.99),rgba(255,249,241,0.92)_58%,rgba(250,251,253,0.96))] px-2.5 py-3 md:px-4 lg:px-6"
-        style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
+        className="composer-shell relative z-20 px-6 py-8"
+        style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}
       >
-        {(replyPreview || pendingVoiceSeconds !== null || editingMessageId) && (
-          <div className="mb-3 rounded-[26px] border border-slate-200/80 bg-white/90 px-4 py-3 mobile-lite-shadow shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
-            {editingMessageId && (
-              <div className="flex items-start gap-3">
-                <div className="mt-1 h-10 w-1 rounded-full bg-gradient-to-b from-blue-400 to-indigo-300" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Редактирование</div>
-                  <div className="mt-1 truncate text-sm text-slate-700">
-                    {findMessageById(activeMessages, editingMessageId)?.text || "Сообщение"}
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setEditingMessageId(null);
-                    setDraft("");
-                  }}
-                  className="rounded-full p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            )}
-            
-            {replyPreview && !editingMessageId && (
-              <div className="flex items-start gap-3">
-                <div className="mt-1 h-10 w-1 rounded-full bg-gradient-to-b from-amber-400 to-orange-300" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Ответ на сообщение</div>
-                  <div className="mt-1 truncate text-sm text-slate-700">
-                    {replyPreview.voice
-                      ? `Голосовое • ${replyPreview.voice} сек`
-                      : replyPreview.text || "Сообщение без текста"}
-                  </div>
-                </div>
-                <button
-                  onClick={() => setReplyTo(null)}
-                  className="rounded-full p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            )}
-
-            {pendingVoiceSeconds !== null && (
-              <div className={replyPreview ? "mt-3" : ""}>
+        <div className="mx-auto max-w-4xl">
+          {(replyPreview || pendingVoiceSeconds !== null || editingMessageId) && (
+            <div className="glass-panel-heavy mb-4 rounded-3xl border border-white/10 px-6 py-4 shadow-2xl">
+              {editingMessageId && (
                 <div className="flex items-start gap-3">
-                  <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-orange-300 text-slate-900">
-                    <Mic className="h-4 w-4" />
-                  </div>
+                  <div className="mt-1 h-10 w-1 rounded-full bg-[#7C3AED]" />
                   <div className="min-w-0 flex-1">
-                    <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Голосовое готово</div>
-                    <div className="mt-1 text-sm text-slate-700">Длительность: {pendingVoiceSeconds} сек</div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-white/30">Editing</div>
+                    <div className="mt-1 truncate text-sm text-white/80">
+                      {findMessageById(activeMessages, editingMessageId)?.text || "Message"}
+                    </div>
                   </div>
                   <button
-                    onClick={() => setPendingVoiceSeconds(null)}
-                    className="rounded-full p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                    onClick={() => {
+                      setEditingMessageId(null);
+                      setDraft("");
+                    }}
+                    className="rounded-full p-2 text-white/20 transition hover:bg-white/10 hover:text-white"
                   >
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+              
+              {replyPreview && !editingMessageId && (
+                <div className="flex items-start gap-4">
+                  <div className="mt-1 h-10 w-1 rounded-full bg-white/40" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-white/30">Reply to</div>
+                    <div className="mt-1 truncate text-sm font-medium text-white/80">
+                      {replyPreview.voice
+                        ? `Voice • ${replyPreview.voice}s`
+                        : replyPreview.text || "Media"}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setReplyTo(null)}
+                    className="rounded-full p-2 text-white/20 transition hover:bg-white/10 hover:text-white"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
 
-        <motion.div
-          animate={sendPulse ? { scale: [1, 1.01, 1] } : { scale: 1 }}
-          transition={{ duration: 0.36, ease: "easeOut" }}
-          className="mobile-lite-shadow flex items-end gap-1 rounded-[28px] border border-white/80 bg-white/96 px-1.5 py-1.5 shadow-[0_10px_24px_rgba(15,23,42,0.04)] md:gap-1.5 md:px-2 md:py-2"
-        >
-          <Button variant="ghost" size="icon" className="hidden h-10 w-10 shrink-0 rounded-full sm:inline-flex md:h-11 md:w-11">
-            <Paperclip className="h-5 w-5" />
-          </Button>
+              {pendingVoiceSeconds !== null && (
+                <div className={replyPreview ? "mt-4 pt-4 border-t border-white/5" : ""}>
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#7C3AED] text-white shadow-lg">
+                      <Mic className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-white/30">Voice message</div>
+                      <div className="mt-1 text-sm font-bold text-white">{pendingVoiceSeconds}s</div>
+                    </div>
+                    <button
+                      onClick={() => setPendingVoiceSeconds(null)}
+                      className="rounded-full p-2 text-white/20 transition hover:bg-white/10 hover:text-white"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
-          <div className="relative min-w-0 flex-1">
-            <Textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void handleSend();
-                }
-              }}
-              placeholder="Сообщение"
-              rows={1}
-              className="max-h-36 min-h-[40px] resize-none rounded-[20px] border-transparent bg-transparent px-2 py-2 text-[16px] leading-6 shadow-none focus-visible:ring-0 md:min-h-[44px] md:px-2.5 md:py-2.5 md:text-[15px]"
-            />
-          </div>
-
-          <div className="flex items-center gap-0.5 md:gap-1">
-            <Button variant="ghost" size="icon" className="hidden h-10 w-10 shrink-0 rounded-full sm:inline-flex md:h-11 md:w-11">
-              <Smile className="h-5 w-5" />
+          <motion.div
+            animate={sendPulse ? { scale: [1, 1.02, 1] } : { scale: 1 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="glass-panel-heavy flex items-end gap-2 rounded-[32px] p-2 shadow-2xl md:gap-3"
+          >
+            <Button variant="ghost" size="icon" className="h-12 w-12 shrink-0 rounded-full glass-panel text-white/40 hover:text-white transition-colors">
+              <Paperclip className="h-5 w-5" />
             </Button>
 
-            {draft.trim() || pendingVoiceSeconds !== null ? (
-              <motion.div
-                key="send"
-                initial={{ scale: 0.88, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.88, opacity: 0 }}
-              >
-                <Button
-                  onClick={() => void handleSend()}
-                  disabled={sending}
-                  className="h-10 w-10 shrink-0 rounded-full bg-gradient-to-br from-amber-400 via-orange-400 to-yellow-300 p-0 text-slate-900 shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95 md:h-11 md:w-11"
+            <div className="relative min-w-0 flex-1 py-1">
+              <Textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void handleSend();
+                  }
+                }}
+                placeholder="Message..."
+                rows={1}
+                className="max-h-40 min-h-[44px] resize-none rounded-2xl border-transparent bg-transparent px-2 py-2.5 text-base font-medium text-white placeholder:text-white/20 shadow-none focus-visible:ring-0"
+              />
+            </div>
+
+            <div className="flex items-center gap-1.5 md:gap-2">
+              {draft.trim() || pendingVoiceSeconds !== null ? (
+                <motion.div
+                  key="send"
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
                 >
-                  <Send className="h-5 w-5" />
-                </Button>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="mic"
-                initial={{ scale: 0.88, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.88, opacity: 0 }}
-              >
-                <Button
-                  onClick={recording ? stopRecord : startRecord}
-                  className={`h-10 w-10 shrink-0 rounded-full p-0 shadow-lg transition-all duration-300 md:h-11 md:w-11 ${
-                    recording
-                      ? "bg-red-500 text-white animate-pulse shadow-red-500/20"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
+                  <Button
+                    onClick={() => void handleSend()}
+                    disabled={sending}
+                    className="h-12 w-12 shrink-0 rounded-full bg-white text-black p-0 shadow-xl hover:scale-105 active:scale-95 transition-all"
+                  >
+                    <Send className="h-5 w-5" />
+                  </Button>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="mic"
+                  initial={{ scale: 0.88, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.88, opacity: 0 }}
                 >
-                  <Mic className="h-5 w-5" />
-                </Button>
-              </motion.div>
-            )}
-          </div>
-        </motion.div>
+                  <Button
+                    onClick={recording ? stopRecord : startRecord}
+                    className={`h-12 w-12 shrink-0 rounded-full p-0 shadow-lg transition-all duration-300 ${
+                      recording
+                        ? "bg-red-500 text-white animate-pulse"
+                        : "glass-panel text-white/40 hover:text-white"
+                    }`}
+                  >
+                    <Mic className="h-5 w-5" />
+                  </Button>
+                </motion.div>
+              )}
+            </div>
+          </motion.div>
+        </div>
       </footer>
     </>
   );

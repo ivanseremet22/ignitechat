@@ -77,46 +77,46 @@ export default function MyProfilePage({
   formatMessageMeta,
 }: MyProfilePageProps) {
   return (
-    <section className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3 md:px-5 md:py-4 lg:px-6">
-      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col">
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-[28px] border border-white/70 bg-white/80 px-3 py-3 shadow-[0_20px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl md:px-5">
-          <div className="flex items-center gap-3">
+    <section className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-8 pb-32">
+      <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col">
+        <div className="glass-panel-heavy mb-8 flex items-center justify-between gap-4 rounded-[40px] p-4 shadow-2xl">
+          <div className="flex items-center gap-4">
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200"
+              className="h-12 w-12 rounded-full glass-panel text-white/60 hover:text-white"
               onClick={onBack}
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
-              <div className="text-xs font-medium uppercase tracking-[0.24em] text-slate-400">Личный профиль</div>
-              <div className="text-lg font-semibold tracking-tight text-slate-900 md:text-xl">
-                {editingMyProfile ? "Редактирование профиля" : "Мой профиль"}
+              <div className="text-[10px] font-bold uppercase tracking-widest text-white/30">Settings</div>
+              <div className="text-xl font-bold text-white">
+                {editingMyProfile ? "Edit Profile" : "My Account"}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             {!editingMyProfile && (
               <>
                 <Button
                   type="button"
                   variant="ghost"
-                  className="rounded-full border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  className="h-12 rounded-full glass-panel px-6 text-sm font-bold text-white/80 hover:text-white"
                   onClick={onStartEdit}
                 >
                   <PencilLine className="mr-2 h-4 w-4" />
-                  Редактировать
+                  Edit
                 </Button>
                 <Button
                   type="button"
                   variant="ghost"
-                  className="rounded-full border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+                  className="h-12 rounded-full glass-panel px-6 text-sm font-bold text-red-400 hover:bg-red-500/10"
                   onClick={onSignOut}
                 >
-                  Сменить аккаунт
+                  Logout
                 </Button>
               </>
             )}
@@ -125,33 +125,37 @@ export default function MyProfilePage({
                 <Button
                   type="button"
                   variant="ghost"
-                  className="rounded-full border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  className="h-12 rounded-full glass-panel px-6 text-sm font-bold text-white/40 hover:text-white"
                   onClick={onCancelEdit}
                 >
-                  Отмена
+                  Cancel
                 </Button>
-                <Button type="button" className="rounded-full bg-slate-900 text-white hover:bg-slate-800" onClick={onSave}>
+                <Button 
+                  type="button" 
+                  className="h-12 rounded-full bg-white px-8 text-sm font-bold text-black hover:bg-white/90 shadow-lg" 
+                  onClick={onSave}
+                >
                   <Save className="mr-2 h-4 w-4" />
-                  Сохранить
+                  Save
                 </Button>
               </>
             )}
           </div>
         </div>
 
-        <div className="grid flex-1 gap-4 xl:grid-cols-[minmax(0,1.5fr)_360px]">
-          <div className="rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(248,250,252,0.90))] p-5 shadow-[0_20px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
-            <div className="flex flex-col gap-5 md:flex-row">
-              <div className="flex w-full flex-col items-start gap-3 md:w-[220px]">
+        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+          <div className="glass-panel space-y-8 rounded-[40px] p-8 shadow-2xl">
+            <div className="flex flex-col gap-8 md:flex-row">
+              <div className="flex flex-col items-center gap-4 md:items-start">
                 <AppAvatar
-                  className="h-24 w-24 md:h-28 md:w-28"
+                  className="h-32 w-32 rounded-3xl border-2 border-white/10 shadow-2xl"
                   initials={myProfile.avatar}
                   imageUrl={myProfileDraft.avatarDataUrl || myProfile.avatarUrl}
                   accent={myProfile.accent}
-                  fallbackClassName="text-3xl font-semibold text-slate-900"
+                  fallbackClassName="text-4xl font-bold text-white"
                 />
                 {editingMyProfile && (
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-col gap-2 w-full">
                     <input
                       ref={profileAvatarInputRef}
                       type="file"
@@ -162,186 +166,163 @@ export default function MyProfilePage({
                     <Button
                       type="button"
                       variant="ghost"
-                      className="rounded-full border border-slate-200 bg-white/90 text-slate-700 hover:bg-white"
+                      className="h-10 w-full rounded-2xl glass-panel text-xs font-bold text-white/60 hover:text-white"
                       onClick={onTriggerAvatarPicker}
                     >
-                      Загрузить фото
+                      Change Photo
                     </Button>
                     {myProfileDraft.avatarDataUrl && (
                       <Button
                         type="button"
                         variant="ghost"
-                        className="rounded-full border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+                        className="h-10 w-full rounded-2xl glass-panel text-xs font-bold text-red-400 hover:bg-red-500/10"
                         onClick={onRemoveAvatarPhoto}
                       >
-                        <X className="mr-2 h-4 w-4" />
-                        Удалить
+                        Remove
                       </Button>
                     )}
                   </div>
                 )}
               </div>
 
-              <div className="min-w-0 flex-1 pt-1">
+              <div className="min-w-0 flex-1 space-y-6">
                 {editingMyProfile ? (
-                  <div className="grid gap-3 md:grid-cols-2">
+                  <div className="grid gap-4 md:grid-cols-2">
                     <div className="md:col-span-2">
-                      <label className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Имя</label>
+                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-white/30">Display Name</label>
                       <Input
                         value={myProfileDraft.name}
                         onChange={(e) => onDraftChange("name", e.target.value)}
-                        className="h-12 rounded-2xl border-slate-200 bg-white/90"
-                        placeholder="Ваше имя"
+                        className="h-14 rounded-2xl border-white/5 bg-white/5 px-6 text-white font-bold placeholder:text-white/20 focus:border-white/20 outline-none"
+                        placeholder="Your name"
                       />
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Username</label>
+                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-white/30">Username</label>
                       <Input
                         value={myProfileDraft.username}
                         onChange={(e) => onDraftChange("username", e.target.value)}
-                        className="h-12 rounded-2xl border-slate-200 bg-white/90"
+                        className="h-14 rounded-2xl border-white/5 bg-white/5 px-6 text-white font-bold placeholder:text-white/20 focus:border-white/20 outline-none"
                         placeholder="username"
                       />
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Статус</label>
+                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-white/30">Status</label>
                       <Input
                         value={myProfileDraft.statusText || ""}
                         onChange={(e) => onDraftChange("statusText", e.target.value)}
-                        className="h-12 rounded-2xl border-slate-200 bg-white/90"
-                        placeholder="Что у вас нового?"
+                        className="h-14 rounded-2xl border-white/5 bg-white/5 px-6 text-white font-bold placeholder:text-white/20 focus:border-white/20 outline-none"
+                        placeholder="What's up?"
                       />
                     </div>
                   </div>
                 ) : (
-                  <>
-                    <div className="truncate text-3xl font-semibold tracking-tight text-slate-900">{myProfile.name}</div>
-                    <div className="mt-2 flex items-center gap-2 text-sm text-slate-500">
+                  <div>
+                    <h1 className="text-4xl font-bold tracking-tight text-white">{myProfile.name}</h1>
+                    <div className="mt-2 flex items-center gap-2 text-white/40">
                       <AtSign className="h-4 w-4" />
-                      <span>@{myProfile.username}</span>
+                      <span className="font-medium">@{myProfile.username}</span>
                     </div>
-                    <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/85 px-3 py-1 text-xs font-medium text-emerald-700 shadow-sm">
-                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                    <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-400">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                       {myProfile.status}
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
             </div>
 
-            <div className="relative mt-5">
-              <label className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500">О себе</label>
+            <div className="space-y-4">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-white/30">Bio</label>
               {editingMyProfile ? (
                 <Textarea
                   value={myProfileDraft.bio}
                   onChange={(e) => onDraftChange("bio", e.target.value)}
-                  className="min-h-[120px] rounded-[24px] border-slate-200 bg-white/90"
-                  placeholder="Расскажите о себе"
+                  className="min-h-[140px] rounded-3xl border-white/5 bg-white/5 p-6 text-white font-medium placeholder:text-white/10 focus:border-white/20 outline-none resize-none"
+                  placeholder="Tell us about yourself..."
                 />
               ) : (
-                <div className="rounded-[24px] border border-white/70 bg-white/75 px-4 py-4 text-sm leading-6 text-slate-600 shadow-sm">
-                  {myProfile.bio}
+                <div className="rounded-3xl glass-panel p-6 text-sm leading-relaxed text-white/70">
+                  {myProfile.bio || "No bio yet."}
                 </div>
               )}
             </div>
 
-            <div className="relative mt-5 grid grid-cols-3 gap-2">
-              <div className="rounded-2xl bg-white/82 px-3 py-3 text-center shadow-sm ring-1 ring-white/70">
-                <div className="text-base font-semibold text-slate-900">{panelMessages.length}</div>
-                <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">messages</div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="rounded-2xl glass-panel p-4 text-center">
+                <div className="text-lg font-bold text-white">{panelMessages.length}</div>
+                <div className="text-[8px] font-bold uppercase tracking-widest text-white/20">Messages</div>
               </div>
-              <div className="rounded-2xl bg-white/82 px-3 py-3 text-center shadow-sm ring-1 ring-white/70">
-                <div className="text-base font-semibold text-slate-900">{panelMessages.filter((message) => message.voice).length}</div>
-                <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">voice</div>
+              <div className="rounded-2xl glass-panel p-4 text-center">
+                <div className="text-lg font-bold text-white">{panelMessages.filter((m) => m.voice).length}</div>
+                <div className="text-[8px] font-bold uppercase tracking-widest text-white/20">Voices</div>
               </div>
-              <div className="rounded-2xl bg-white/82 px-3 py-3 text-center shadow-sm ring-1 ring-white/70">
-                <div className="text-base font-semibold text-slate-900">
-                  {panelMessages.reduce((sum, message) => sum + message.reactions.length, 0)}
+              <div className="rounded-2xl glass-panel p-4 text-center">
+                <div className="text-lg font-bold text-white">
+                  {panelMessages.reduce((sum, m) => sum + m.reactions.length, 0)}
                 </div>
-                <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">reactions</div>
+                <div className="text-[8px] font-bold uppercase tracking-widest text-white/20">Reactions</div>
               </div>
             </div>
 
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Локация</label>
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-white/30">Location</label>
                 {editingMyProfile ? (
                   <Input
                     value={myProfileDraft.location || ""}
                     onChange={(e) => onDraftChange("location", e.target.value)}
-                    className="h-12 rounded-2xl border-slate-200 bg-white"
-                    placeholder="Ваш город"
+                    className="h-14 rounded-2xl border-white/5 bg-white/5 px-6 text-white font-bold placeholder:text-white/20 focus:border-white/20 outline-none"
+                    placeholder="City"
                   />
                 ) : (
-                  <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-sm text-slate-700">{myProfile.location}</div>
+                  <div className="rounded-2xl glass-panel px-6 py-4 text-sm font-medium text-white/80">{myProfile.location || "—"}</div>
                 )}
               </div>
 
-              <div>
-                <label className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Телефон</label>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-white/30">Phone</label>
                 {editingMyProfile ? (
                   <Input
                     value={myProfileDraft.phone || ""}
                     onChange={(e) => onDraftChange("phone", e.target.value)}
-                    className="h-12 rounded-2xl border-slate-200 bg-white"
-                    placeholder="+7..."
+                    className="h-14 rounded-2xl border-white/5 bg-white/5 px-6 text-white font-bold placeholder:text-white/20 focus:border-white/20 outline-none"
+                    placeholder="+1..."
                   />
                 ) : (
-                  <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-sm text-slate-700">{myProfile.phone}</div>
+                  <div className="rounded-2xl glass-panel px-6 py-4 text-sm font-medium text-white/80">{myProfile.phone || "—"}</div>
                 )}
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Email</label>
-                {editingMyProfile ? (
-                  <Input
-                    value={myProfileDraft.email}
-                    onChange={(e) => onDraftChange("email", e.target.value)}
-                    className="h-12 rounded-2xl border-slate-200 bg-white"
-                    placeholder="email@example.com"
-                  />
-                ) : (
-                  <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-sm text-slate-700">{authEmail || "—"}</div>
-                )}
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Роль</label>
-                <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                  {myProfile.role} • {myProfile.joinedAt}
-                </div>
               </div>
             </div>
           </div>
 
-          <div className="rounded-[30px] border border-white/70 bg-white/85 p-5 shadow-[0_20px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
-            <div className="mb-4 text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Активность</div>
-            <div className="space-y-3">
-              {panelMessages.slice().reverse().slice(0, 5).map((message) => (
+          <div className="glass-panel flex flex-col gap-6 rounded-[40px] p-8 shadow-2xl">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-white/30">Recent Activity</h3>
+            <div className="space-y-4 flex-1">
+              {panelMessages.slice().reverse().slice(0, 4).map((message) => (
                 <div
                   key={message.id}
-                  className="rounded-[22px] border border-slate-200/70 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,0.96))] px-4 py-3"
+                  className="rounded-3xl glass-panel p-4 hover:bg-white/5 transition-colors"
                 >
-                  <div className="text-xs text-slate-400">{formatMessageMeta(message.createdAt)}</div>
-                  <div className="mt-1 text-sm text-slate-700">
-                    {message.voice ? `Голосовое • ${message.voice} c` : message.text || "Сообщение без текста"}
+                  <div className="text-[9px] font-bold text-white/20 mb-2">{formatMessageMeta(message.createdAt)}</div>
+                  <div className="text-sm font-medium text-white/80 line-clamp-2">
+                    {message.voice ? `Voice message` : message.text || "Media message"}
                   </div>
                 </div>
               ))}
               {panelMessages.length === 0 && (
-                <div className="rounded-[22px] border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
-                  Пока нет активности для отображения.
+                <div className="flex flex-col items-center justify-center py-12 text-center opacity-20">
+                  <Mic className="h-8 w-8 mb-4" />
+                  <div className="text-[10px] font-bold uppercase tracking-widest">No activity</div>
                 </div>
               )}
             </div>
 
-            <div className="mt-5 rounded-[24px] border border-slate-200/80 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-              <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">Рефакторинг состояния</div>
-              <div className="space-y-2">
-                <div>• Sidebar всегда остаётся слева и не исчезает при открытии профиля.</div>
-                <div>• Центральная колонка переключается между чатом и страницей профиля.</div>
-                <div>• Правая панель по-прежнему отвечает только за профиль собеседника.</div>
-              </div>
+            <div className="rounded-3xl bg-[#7C3AED]/10 p-6 border border-[#7C3AED]/20">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-[#7C3AED] mb-3">Premium Status</div>
+              <p className="text-xs font-medium text-white/60 leading-relaxed">
+                Your account is verified and secure. Enjoy full access to all premium features.
+              </p>
             </div>
           </div>
         </div>

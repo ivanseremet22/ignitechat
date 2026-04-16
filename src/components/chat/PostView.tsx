@@ -1,0 +1,190 @@
+import React, { useState, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { X, MoreHorizontal, Check, ChevronDown, Camera, PencilLine, Save } from "lucide-react";
+import { UserProfile } from "../../chat-types";
+
+type ProfileViewProps = {
+  myProfile: UserProfile | null;
+  onSaveProfile?: (data: Partial<UserProfile> & { avatarFile?: File }) => Promise<void>;
+};
+
+export default function ProfileView({ myProfile, onSaveProfile }: ProfileViewProps) {
+  const [status, setStatus] = useState<"going" | "not" | "maybe">("going");
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(myProfile?.name || "Housewarming Party");
+  const [editBio, setEditBio] = useState(myProfile?.bio || "We've just moved to New York! And warmer weather means housewarming!");
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(myProfile?.avatarUrl || null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoClick = () => {
+    if (isEditing) fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSave = async () => {
+    if (onSaveProfile) {
+      const avatarFile = fileInputRef.current?.files?.[0];
+      await onSaveProfile({
+        name: editName,
+        bio: editBio,
+        avatarFile
+      });
+    }
+    setIsEditing(false);
+  };
+
+  return (
+    <div className="relative h-full w-full overflow-hidden bg-black">
+      {/* Background Image - User's Profile Photo */}
+      <div 
+        className={`absolute inset-0 z-0 bg-cover bg-center transition-all duration-700 ${isEditing ? 'scale-110 blur-sm' : ''}`}
+        style={{ 
+          backgroundImage: `url('${avatarPreview || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=1000&auto=format&fit=crop'}')`,
+          filter: isEditing ? 'brightness(0.5)' : 'brightness(0.7) contrast(1.1)'
+        }}
+      />
+      <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/20 via-transparent to-black/90" />
+
+      {/* Top Bar */}
+      <div className="relative z-20 flex items-center justify-between px-6 pt-12">
+        <button className="flex h-10 w-10 items-center justify-center rounded-full glass-surface text-white">
+          <X size={20} />
+        </button>
+        <div className="flex gap-2">
+          {isEditing ? (
+            <button 
+              onClick={handleSave}
+              className="flex h-10 px-4 items-center justify-center gap-2 rounded-full bg-white text-black font-bold text-xs"
+            >
+              <Save size={16} /> Save
+            </button>
+          ) : (
+            <button 
+              onClick={() => setIsEditing(true)}
+              className="flex h-10 w-10 items-center justify-center rounded-full glass-surface text-white"
+            >
+              <PencilLine size={20} />
+            </button>
+          )}
+          <button className="flex h-10 w-10 items-center justify-center rounded-full glass-surface text-white">
+            <MoreHorizontal size={20} />
+          </button>
+        </div>
+      </div>
+
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        className="hidden" 
+        accept="image/*" 
+        onChange={handleFileChange} 
+      />
+
+      {/* Content */}
+      <div className="relative z-20 flex h-full flex-col justify-end pb-32 px-6">
+        <div className="mb-8 text-center">
+          {isEditing ? (
+            <input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="text-glow mb-4 w-full bg-transparent text-center text-4xl font-bold leading-tight tracking-tight text-white outline-none border-b border-white/20"
+              autoFocus
+            />
+          ) : (
+            <h1 className="text-glow mb-4 text-4xl font-bold leading-tight tracking-tight text-white">
+              {editName}
+            </h1>
+          )}
+          <div className="space-y-1 text-sm font-medium text-white/70">
+            <p>19 September, 12 pm</p>
+            <p>1559 Audubon Ave</p>
+            <p>New York, NY</p>
+          </div>
+        </div>
+
+        {/* Toggle Buttons */}
+        <div className="glass-surface mb-8 flex h-14 w-full items-center rounded-2xl p-1.5">
+          <button 
+            onClick={() => setStatus("going")}
+            className={`relative flex flex-1 items-center justify-center gap-2 rounded-xl h-full transition-all duration-300 ${status === "going" ? "bg-white text-green-600" : "text-white/60"}`}
+          >
+            {status === "going" && <Check size={14} strokeWidth={3} />}
+            <span className="text-xs font-bold">Going</span>
+          </button>
+          <button 
+            onClick={() => setStatus("not")}
+            className={`flex flex-1 items-center justify-center rounded-xl h-full transition-all duration-300 ${status === "not" ? "bg-white text-red-500" : "text-white/60"}`}
+          >
+             <span className="text-xs font-bold">Not Going</span>
+          </button>
+          <button 
+            onClick={() => setStatus("maybe")}
+            className={`flex flex-1 items-center justify-center rounded-xl h-full transition-all duration-300 ${status === "maybe" ? "bg-white text-gray-800" : "text-white/60"}`}
+          >
+             <span className="text-xs font-bold">Maybe</span>
+          </button>
+        </div>
+
+        {/* Profile Info Card */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card-dark relative rounded-[32px] p-6 text-center group"
+        >
+          {isEditing && (
+            <div 
+              onClick={handlePhotoClick}
+              className="absolute inset-0 z-30 flex items-center justify-center rounded-[32px] bg-black/40 cursor-pointer"
+            >
+              <Camera size={32} className="text-white animate-pulse" />
+            </div>
+          )}
+
+          <div className="mb-4 flex justify-center">
+             <img 
+               src={avatarPreview || "https://api.dicebear.com/7.x/avataaars/svg?seed=Andre"} 
+               alt="Host" 
+               className="h-10 w-10 rounded-full border border-white/20"
+             />
+          </div>
+          <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-blue-400">
+            Hosted by {editName.split(' ')[0]}
+          </h3>
+          
+          {isEditing ? (
+            <textarea
+              value={editBio}
+              onChange={(e) => setEditBio(e.target.value)}
+              className="mb-4 w-full bg-transparent text-center text-xs font-medium leading-relaxed text-white/70 outline-none border-b border-white/10 resize-none h-20"
+            />
+          ) : (
+            <p className="mb-4 text-xs font-medium leading-relaxed text-white/70 whitespace-pre-line">
+              {editBio}
+            </p>
+          )}
+
+          <p className="text-[11px] leading-relaxed text-white/40">
+            We'll have light refreshments, drinks and<br />
+            BBQing in the evening. Stop by to hang<br />
+            out, catch up and friends meet friends!
+          </p>
+        </motion.div>
+
+        <button className="mt-8 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
+           Scroll Down to see full post
+           <ChevronDown size={14} className="rounded-full border border-white/20 p-0.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
