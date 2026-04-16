@@ -56,32 +56,35 @@ export default function ProfileView({ myProfile, onSaveProfile }: ProfileViewPro
       <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/20 via-transparent to-black/90" />
 
       {/* Top Bar */}
-      <div className="relative z-20 flex items-center justify-between px-6 pt-12">
-        <button className="flex h-10 w-10 items-center justify-center rounded-full glass-surface text-white">
+      <div className="relative z-20 flex min-h-[100px] items-center px-6 pt-12">
+        {/* Absolute centering container */}
+        <div className="absolute inset-x-0 top-12 flex items-center justify-center px-20">
+          <div className="w-full max-w-[280px]">
+            {isEditing ? (
+              <input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="text-glow w-full bg-transparent text-center text-2xl font-bold tracking-tight text-white outline-none border-b border-white/20"
+                autoFocus
+              />
+            ) : (
+              <h1 className="text-glow truncate text-center text-2xl font-bold tracking-tight text-white">
+                {editName}
+              </h1>
+            )}
+          </div>
+        </div>
+
+        {/* Buttons remain in flow but outside the centered name */}
+        <button className="relative z-30 flex h-10 w-10 items-center justify-center rounded-full glass-surface text-white">
           <X size={20} />
         </button>
 
-        {/* User Name in Header */}
-        <div className="flex-1 px-4 text-center">
-          {isEditing ? (
-            <input
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              className="text-glow w-full bg-transparent text-center text-2xl font-bold tracking-tight text-white outline-none border-b border-white/20"
-              autoFocus
-            />
-          ) : (
-            <h1 className="text-glow truncate text-2xl font-bold tracking-tight text-white">
-              {editName}
-            </h1>
-          )}
-        </div>
-
-        <div className="flex gap-2">
+        <div className="relative z-30 ml-auto flex gap-2">
           {isEditing ? (
             <button 
               onClick={handleSave}
-              className="flex h-10 px-4 items-center justify-center gap-2 rounded-full bg-white text-black font-bold text-xs"
+              className="flex h-10 px-4 items-center justify-center gap-2 rounded-full bg-white text-black font-bold text-xs shadow-xl"
             >
               <Save size={16} /> Save
             </button>
@@ -117,24 +120,37 @@ export default function ProfileView({ myProfile, onSaveProfile }: ProfileViewPro
           </div>
         </div>
 
-        {/* Toggle Buttons */}
-        <div className="glass-surface mb-8 flex h-14 w-full items-center rounded-2xl p-1.5">
+        {/* Toggle Buttons with smooth animation */}
+        <div className="glass-surface relative mb-8 flex h-14 w-full items-center rounded-2xl p-1.5 overflow-hidden">
+          <div className="absolute inset-1.5 flex w-[calc(100%-12px)] pointer-events-none">
+            <motion.div
+              layoutId="profileStatusGlow"
+              className="h-full rounded-xl bg-white shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+              initial={false}
+              animate={{
+                x: status === "going" ? "0%" : status === "not" ? "100%" : "200%",
+                width: "33.333%"
+              }}
+              transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+            />
+          </div>
+
           <button 
             onClick={() => setStatus("going")}
-            className={`relative flex flex-1 items-center justify-center gap-2 rounded-xl h-full transition-all duration-300 ${status === "going" ? "bg-white text-green-600" : "text-white/60"}`}
+            className={`relative z-10 flex flex-1 items-center justify-center gap-2 h-full transition-colors duration-300 ${status === "going" ? "text-green-600" : "text-white/60"}`}
           >
             {status === "going" && <Check size={14} strokeWidth={3} />}
             <span className="text-xs font-bold">Going</span>
           </button>
           <button 
             onClick={() => setStatus("not")}
-            className={`flex flex-1 items-center justify-center rounded-xl h-full transition-all duration-300 ${status === "not" ? "bg-white text-red-500" : "text-white/60"}`}
+            className={`relative z-10 flex flex-1 items-center justify-center h-full transition-colors duration-300 ${status === "not" ? "text-red-500" : "text-white/60"}`}
           >
              <span className="text-xs font-bold">Not Going</span>
           </button>
           <button 
             onClick={() => setStatus("maybe")}
-            className={`flex flex-1 items-center justify-center rounded-xl h-full transition-all duration-300 ${status === "maybe" ? "bg-white text-gray-800" : "text-white/60"}`}
+            className={`relative z-10 flex flex-1 items-center justify-center h-full transition-colors duration-300 ${status === "maybe" ? "text-gray-800" : "text-white/60"}`}
           >
              <span className="text-xs font-bold">Maybe</span>
           </button>
