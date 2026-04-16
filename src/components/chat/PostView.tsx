@@ -60,6 +60,23 @@ export default function ProfileView({ myProfile, onSaveProfile }: ProfileViewPro
         <button className="flex h-10 w-10 items-center justify-center rounded-full glass-surface text-white">
           <X size={20} />
         </button>
+
+        {/* User Name in Header */}
+        <div className="flex-1 px-4 text-center">
+          {isEditing ? (
+            <input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="text-glow w-full bg-transparent text-center text-2xl font-bold tracking-tight text-white outline-none border-b border-white/20"
+              autoFocus
+            />
+          ) : (
+            <h1 className="text-glow truncate text-2xl font-bold tracking-tight text-white">
+              {editName}
+            </h1>
+          )}
+        </div>
+
         <div className="flex gap-2">
           {isEditing ? (
             <button 
@@ -93,18 +110,6 @@ export default function ProfileView({ myProfile, onSaveProfile }: ProfileViewPro
       {/* Content */}
       <div className="relative z-20 flex h-full flex-col justify-end pb-32 px-6">
         <div className="mb-8 text-center">
-          {isEditing ? (
-            <input
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              className="text-glow mb-4 w-full bg-transparent text-center text-4xl font-bold leading-tight tracking-tight text-white outline-none border-b border-white/20"
-              autoFocus
-            />
-          ) : (
-            <h1 className="text-glow mb-4 text-4xl font-bold leading-tight tracking-tight text-white">
-              {editName}
-            </h1>
-          )}
           <div className="space-y-1 text-sm font-medium text-white/70">
             <p>19 September, 12 pm</p>
             <p>1559 Audubon Ave</p>
