@@ -498,6 +498,23 @@ export default function App() {
       },
     });
 
+    // Подписка на новые профили для живого поиска
+    const profilesChannel = client
+      .channel("profiles-changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles" },
+        async () => {
+          try {
+            const nextUsers = await fetchUsers(client, currentUserId);
+            setUsers(nextUsers);
+          } catch (err) {
+            console.error("Error refreshing users from realtime:", err);
+          }
+        }
+      )
+      .subscribe();
+
     presenceChannel
       .on("presence", { event: "sync" }, () => {
         const state = presenceChannel.presenceState();
@@ -528,6 +545,7 @@ export default function App() {
 
     return () => {
       void client.removeChannel(presenceChannel);
+      void client.removeChannel(profilesChannel);
     };
   }, [authClient, currentProfile?.id, isAuthenticated]);
 
@@ -845,13 +863,15 @@ export default function App() {
   }, [activeChatId, authClient, currentProfile?.id, isAuthenticated]);
 
   const filteredChats = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = search.trim().replace(/^@/, "").toLowerCase();
     if (!term) return chats;
     return chats.filter(
       (chat) =>
-        chat.title.toLowerCase().includes(term) || chat.preview.toLowerCase().includes(term),
+        chat.title.toLowerCase().includes(term) ||
+        chat.preview.toLowerCase().includes(term) ||
+        (chat.peerId && users.find(u => u.id === chat.peerId)?.username.toLowerCase().includes(term))
     );
-  }, [search, chats]);
+  }, [search, chats, users]);
 
   const searchResults = useMemo(() => {
     const term = search.trim().replace(/^@/, "").toLowerCase();
