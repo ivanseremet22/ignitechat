@@ -1484,164 +1484,212 @@ export default function App() {
 
         <main className="chat-main-shell relative flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="relative z-10 flex h-full flex-col">
-            <div className="flex-1 flex flex-col min-h-0">
-              {activeTab === "post" ? (
-                <ProfileView 
-                  myProfile={myProfile} 
-                  onSaveProfile={async (data) => {
-                    // Logic to update profile draft and save
-                    if (data.name) updateMyProfileDraft("name", data.name);
-                    if (data.bio) updateMyProfileDraft("bio", data.bio);
-                    if (data.avatarFile) setAvatarFile(data.avatarFile);
-                    await saveMyProfile();
-                  }}
-                />
-              ) : activeTab === "discover" ? (
-                <DiscoverView />
-              ) : myProfilePageOpen && myProfile ? (
-                <MyProfilePage
-                  myProfile={myProfile}
-                  editingMyProfile={editingMyProfile}
-                  myProfileDraft={myProfileDraft}
-                  authEmail={authProfile?.email}
-                  panelMessages={panelMessages}
-                  onBack={closeMyProfilePage}
-                  onSignOut={signOutToRegistration}
-                  onStartEdit={() => setEditingMyProfile(true)}
-                  onCancelEdit={() => {
-                    if (myProfile) {
-                      setMyProfileDraft({
-                        name: myProfile.name,
-                        username: myProfile.username,
-                        bio: myProfile.bio,
-                        email: authProfile?.email || "",
-                        password: authProfile?.password || "",
-                        phone: myProfile.phone === "—" ? "" : myProfile.phone,
-                        location: myProfile.location === "—" ? "" : myProfile.location,
-                        statusText: myProfile.status || "",
-                        avatarDataUrl: authProfile?.avatarDataUrl || "",
-                      });
-                    }
-                    setEditingMyProfile(false);
-                  }}
-                  onSave={() => void saveMyProfile()}
-                  onDraftChange={updateMyProfileDraft}
-                  onTriggerAvatarPicker={triggerAvatarPicker}
-                  onRemoveAvatarPhoto={removeAvatarPhoto}
-                  onAvatarInputChange={handleProfileAvatarChange}
-                  profileAvatarInputRef={profileAvatarInputRef}
-                  formatMessageMeta={formatMessageMeta}
-                />
-              ) : activeChat && activeTab === "chats" ? (
-                <div className="flex flex-1 min-h-0 relative overflow-hidden">
-                  <div className="flex flex-1 flex-col min-w-0 relative">
-                    <ChatView
-                      activeChat={activeChat}
-                      activeProfile={activeProfile}
-                      activePeer={activePeer}
-                      myProfile={myProfile}
-                      showTyping={false}
-                      error={error}
-                      loadingMessages={loadingMessages}
-                      activeMessages={activeMessages}
-                      currentUserId={currentUserId}
-                      hoveredMsg={hoveredMsg}
-                      setHoveredMsg={setHoveredMsg}
-                      setReplyTo={setReplyTo}
-                      addReaction={addReaction}
-                      findMessageById={findMessageById}
-                      toggleVoicePlay={toggleVoicePlay}
-                      playingVoiceId={playingVoiceId}
-                      isTouch={isTouch}
-                      formatDayLabel={formatDayLabel}
-                      sameDay={sameDay}
-                      bottomRef={bottomRef}
-                      replyPreview={replyPreview}
-                      pendingVoiceSeconds={pendingVoiceSeconds}
-                      setPendingVoiceSeconds={setPendingVoiceSeconds}
-                      draft={draft}
-                      setDraft={setDraft}
-                      handleSend={handleSend}
-                      sending={sending}
-                      sendPulse={sendPulse}
-                      recording={recording}
-                      startRecord={startRecord}
-                      stopRecord={stopRecord}
-                      openMyProfile={() => setMyProfilePageOpen(true)}
-                      openPeerProfile={() => {
-                        if (activeChat?.isGroup) {
-                          setProfileView("group");
-                        } else {
-                          setProfileView("peer");
-                        }
-                        setProfileOpen(true);
+            <div className="flex-1 flex flex-col min-h-0 relative">
+              <AnimatePresence mode="wait">
+                {activeTab === "post" ? (
+                  <motion.div
+                    key="post"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ duration: 0.3, ease: "easeOut" }}
+                    className="absolute inset-0"
+                  >
+                    <ProfileView 
+                      myProfile={myProfile} 
+                      onSaveProfile={async (data) => {
+                        if (data.name) updateMyProfileDraft("name", data.name);
+                        if (data.bio) updateMyProfileDraft("bio", data.bio);
+                        if (data.avatarFile) setAvatarFile(data.avatarFile);
+                        await saveMyProfile();
                       }}
-                      setMobileSidebarOpen={(open) => {
-                        if (!open) setActiveChatId(null);
-                      }}
-                      onEditMessage={(id, text) => {
-                        setEditingMessageId(id);
-                        setDraft(text);
-                      }}
-                      onDeleteMessage={handleDeleteMessage}
-                      editingMessageId={editingMessageId}
-                      setEditingMessageId={setEditingMessageId}
                     />
-                  </div>
-
-                  {profileOpen && profileView === "peer" && activeProfile && (
-                    <PeerProfilePanel
-                      profile={activeProfile}
-                      sharedMessages={sharedMessages}
-                      isDesktop={isDesktop}
-                      open={profileOpen}
-                      onClose={() => setProfileOpen(false)}
+                  </motion.div>
+                ) : activeTab === "discover" ? (
+                  <motion.div
+                    key="discover"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ duration: 0.3, ease: "easeOut" }}
+                    className="absolute inset-0"
+                  >
+                    <DiscoverView />
+                  </motion.div>
+                ) : myProfilePageOpen && myProfile ? (
+                  <motion.div
+                    key="myprofile"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 1.05 }}
+                    transition={{ duration: 0.3 }}
+                    className="absolute inset-0"
+                  >
+                    <MyProfilePage
+                      myProfile={myProfile}
+                      editingMyProfile={editingMyProfile}
+                      myProfileDraft={myProfileDraft}
+                      authEmail={authProfile?.email}
+                      panelMessages={panelMessages}
+                      onBack={closeMyProfilePage}
+                      onSignOut={signOutToRegistration}
+                      onStartEdit={() => setEditingMyProfile(true)}
+                      onCancelEdit={() => {
+                        if (myProfile) {
+                          setMyProfileDraft({
+                            name: myProfile.name,
+                            username: myProfile.username,
+                            bio: myProfile.bio,
+                            email: authProfile?.email || "",
+                            password: authProfile?.password || "",
+                            phone: myProfile.phone === "—" ? "" : myProfile.phone,
+                            location: myProfile.location === "—" ? "" : myProfile.location,
+                            statusText: myProfile.status || "",
+                            avatarDataUrl: authProfile?.avatarDataUrl || "",
+                          });
+                        }
+                        setEditingMyProfile(false);
+                      }}
+                      onSave={() => void saveMyProfile()}
+                      onDraftChange={updateMyProfileDraft}
+                      onTriggerAvatarPicker={triggerAvatarPicker}
+                      onRemoveAvatarPhoto={removeAvatarPhoto}
+                      onAvatarInputChange={handleProfileAvatarChange}
+                      profileAvatarInputRef={profileAvatarInputRef}
                       formatMessageMeta={formatMessageMeta}
                     />
-                  )}
+                  </motion.div>
+                ) : activeChat && activeTab === "chats" ? (
+                  <motion.div
+                    key={`chat-${activeChatId}`}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.3 }}
+                    className="absolute inset-0 flex"
+                  >
+                    <div className="flex flex-1 flex-col min-w-0 relative">
+                      <ChatView
+                        activeChat={activeChat}
+                        activeProfile={activeProfile}
+                        activePeer={activePeer}
+                        myProfile={myProfile}
+                        showTyping={false}
+                        error={error}
+                        loadingMessages={loadingMessages}
+                        activeMessages={activeMessages}
+                        currentUserId={currentUserId}
+                        hoveredMsg={hoveredMsg}
+                        setHoveredMsg={setHoveredMsg}
+                        setReplyTo={setReplyTo}
+                        addReaction={addReaction}
+                        findMessageById={findMessageById}
+                        toggleVoicePlay={toggleVoicePlay}
+                        playingVoiceId={playingVoiceId}
+                        isTouch={isTouch}
+                        formatDayLabel={formatDayLabel}
+                        sameDay={sameDay}
+                        bottomRef={bottomRef}
+                        replyPreview={replyPreview}
+                        pendingVoiceSeconds={pendingVoiceSeconds}
+                        setPendingVoiceSeconds={setPendingVoiceSeconds}
+                        draft={draft}
+                        setDraft={setDraft}
+                        handleSend={handleSend}
+                        sending={sending}
+                        sendPulse={sendPulse}
+                        recording={recording}
+                        startRecord={startRecord}
+                        stopRecord={stopRecord}
+                        openMyProfile={() => setMyProfilePageOpen(true)}
+                        openPeerProfile={() => {
+                          if (activeChat?.isGroup) {
+                            setProfileView("group");
+                          } else {
+                            setProfileView("peer");
+                          }
+                          setProfileOpen(true);
+                        }}
+                        setMobileSidebarOpen={(open) => {
+                          if (!open) setActiveChatId(null);
+                        }}
+                        onEditMessage={(id, text) => {
+                          setEditingMessageId(id);
+                          setDraft(text);
+                        }}
+                        onDeleteMessage={handleDeleteMessage}
+                        editingMessageId={editingMessageId}
+                        setEditingMessageId={setEditingMessageId}
+                      />
+                    </div>
 
-                  {profileOpen && profileView === "group" && activeChat && (
-                    <GroupProfilePanel
-                      chat={activeChat}
-                      members={users.filter(u => u.id === activeChat.peerId || u.id === currentUserId)}
-                      isDesktop={isDesktop}
-                      open={profileOpen}
-                      onClose={() => setProfileOpen(false)}
-                      onTriggerAvatarPicker={() => {
-                        alert("Group avatar upload coming soon!");
-                      }}
-                    />
-                  )}
-                </div>
-              ) : activeTab === "chats" ? (
-                <div className="flex h-full w-full">
-                  {!isDesktop && (
-                    <Sidebar
-                      isDesktop={isDesktop}
-                      mobileSidebarOpen={true}
-                      onCloseMobile={() => {}}
-                      provider={provider}
-                      isLive={Boolean(authClient)}
-                      myProfile={myProfile}
-                      onOpenMyProfile={openMyProfile}
-                      search={search}
-                      onSearchChange={setSearch}
-                      loadingChats={loadingChats}
-                      filteredChats={filteredChats}
-                      searchResults={searchResults}
-                      activeChatId={activeChatId}
-                      onSelectChat={selectChat}
-                      onStartChat={startChatWithUser}
-                      onCreateGroup={() => setIsCreatingGroup(true)}
-                      formatTime={formatTime}
-                    />
-                  )}
-                </div>
-              ) : (
-                <div className="flex flex-1 flex-col items-center justify-center p-8 text-center opacity-40">
-                  <div className="text-xl font-bold uppercase tracking-widest">Coming Soon</div>
-                </div>
-              )}
+                    {profileOpen && profileView === "peer" && activeProfile && (
+                      <PeerProfilePanel
+                        profile={activeProfile}
+                        sharedMessages={sharedMessages}
+                        isDesktop={isDesktop}
+                        open={profileOpen}
+                        onClose={() => setProfileOpen(false)}
+                        formatMessageMeta={formatMessageMeta}
+                      />
+                    )}
+
+                    {profileOpen && profileView === "group" && activeChat && (
+                      <GroupProfilePanel
+                        chat={activeChat}
+                        members={users.filter(u => u.id === activeChat.peerId || u.id === currentUserId)}
+                        isDesktop={isDesktop}
+                        open={profileOpen}
+                        onClose={() => setProfileOpen(false)}
+                        onTriggerAvatarPicker={() => {
+                          alert("Group avatar upload coming soon!");
+                        }}
+                      />
+                    )}
+                  </motion.div>
+                ) : activeTab === "chats" ? (
+                  <motion.div
+                    key="sidebar"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    transition={{ duration: 0.3 }}
+                    className="absolute inset-0 flex"
+                  >
+                    {!isDesktop && (
+                      <Sidebar
+                        isDesktop={isDesktop}
+                        mobileSidebarOpen={true}
+                        onCloseMobile={() => {}}
+                        provider={provider}
+                        isLive={Boolean(authClient)}
+                        myProfile={myProfile}
+                        onOpenMyProfile={openMyProfile}
+                        search={search}
+                        onSearchChange={setSearch}
+                        loadingChats={loadingChats}
+                        filteredChats={filteredChats}
+                        searchResults={searchResults}
+                        activeChatId={activeChatId}
+                        onSelectChat={selectChat}
+                        onStartChat={startChatWithUser}
+                        onCreateGroup={() => setIsCreatingGroup(true)}
+                        formatTime={formatTime}
+                      />
+                    )}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="coming-soon"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center opacity-40"
+                  >
+                    <div className="text-xl font-bold uppercase tracking-widest">Coming Soon</div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </main>
