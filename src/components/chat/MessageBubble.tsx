@@ -1,5 +1,5 @@
 import React, { memo, useMemo } from "react";
-import { CheckCheck, Flame, Heart, MessageCircle, Pause, Play, ThumbsUp } from "lucide-react";
+import { Flame, Heart, MessageCircle, Pause, Play, ThumbsUp } from "lucide-react";
 import type { Message, Reaction } from "../../chat-types";
 
 type MessageBubbleProps = {
@@ -77,26 +77,13 @@ function MessageBubble({
         groupedWithNext ? "rounded-bl-xl" : "rounded-bl-[22px]"
       } rounded-tr-[22px] rounded-br-[22px]`;
 
-  const statusLabel = mine
-    ? message.status === "sending"
-      ? "Отправка..."
-      : message.status === "error"
-        ? "Ошибка"
-        : message.status === "seen" || message.seen
-          ? "Просмотрено"
-          : message.status === "delivered"
-            ? "Доставлено"
-            : "Отправлено"
+  const statusTone = mine
+    ? message.status === "error"
+      ? "bg-rose-400 shadow-[0_0_0_1px_rgba(251,113,133,0.18),0_0_14px_rgba(251,113,133,0.32)]"
+      : message.status === "seen" || message.seen
+        ? "bg-sky-400 shadow-[0_0_0_1px_rgba(56,189,248,0.16),0_0_16px_rgba(56,189,248,0.3)]"
+        : "bg-rose-300 shadow-[0_0_0_1px_rgba(251,113,133,0.16),0_0_14px_rgba(251,113,133,0.24)]"
     : "";
-
-
-  const indicatorTone = mine
-    ? message.status === "seen" || message.seen
-      ? "seen"
-      : message.status === "error"
-        ? "error"
-        : "sent"
-    : "idle";
 
   const showActions = hoveredMsg === message.id;
 
@@ -169,39 +156,7 @@ function MessageBubble({
         <div className={"mt-1.5 flex justify-between gap-4 text-[11px] " + (mine ? "text-slate-500" : "text-slate-400")}>
           <div className="flex flex-wrap items-center gap-2">
             <span>{timeLabel}</span>
-            {mine && (
-              <span
-                className={
-                  "inline-flex items-center gap-1.5 " +
-                  (indicatorTone === "seen"
-                    ? "text-sky-600"
-                    : indicatorTone === "error"
-                      ? "text-rose-600"
-                      : "text-rose-500")
-                }
-              >
-                <span
-                  className={
-                    "status-candle-dot " +
-                    (indicatorTone === "seen"
-                      ? "status-candle-dot--seen"
-                      : indicatorTone === "error"
-                        ? "status-candle-dot--error"
-                        : "status-candle-dot--sent")
-                  }
-                  aria-hidden="true"
-                />
-                {statusLabel}
-                {(message.status === "delivered" || message.status === "seen" || message.seen) && (
-                  <CheckCheck
-                    className={
-                      "h-3.5 w-3.5 status-candle-icon " +
-                      (indicatorTone === "seen" ? "status-candle-icon--seen" : "status-candle-icon--sent")
-                    }
-                  />
-                )}
-              </span>
-            )}
+            {mine && <span className={`message-status-indicator ${statusTone}`} />}
           </div>
 
           {message.reactions.length > 0 && (

@@ -35,24 +35,6 @@ type ReactionRow = {
   type: Reaction["type"];
 };
 
-export type ChatListRealtimeEvent =
-  | { kind: "participant_insert"; conversationId: string }
-  | { kind: "participant_delete"; conversationId: string }
-  | { kind: "message_insert"; conversationId: string; preview: string; createdAt: string; senderId: string }
-  | { kind: "message_update"; conversationId: string; preview: string; createdAt: string; senderId: string }
-  | { kind: "message_delete"; conversationId: string }
-  | { kind: "conversation_update"; conversationId: string; preview: string | null; updatedAt: string | null };
-
-export type PresenceStateMap = Record<
-  string,
-  {
-    online: boolean;
-    activeChatId: string | null;
-    lastReadAt: string | null;
-  }
->;
-
-
 function getString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
@@ -274,129 +256,6 @@ export async function fetchUsers(client: SupabaseClient, currentUserId: string):
     console.error("fetchUsers error:", error);
     return [];
   }
-}
-
-
-export async function searchUsers(
-  client: SupabaseClient,
-  currentUserId: string,
-  rawQuery: string,
-): Promise<UserProfile[]> {
-  const query = rawQuery.trim().replace(/^@/, "");
-  if (!query) return [];
-
-  try {
-    const result = await client
-      .from("profiles")
-      .select("*")
-      .neq("id", currentUserId)
-      .or(`username.ilike.%${query}%,name.ilike.%${query}%`)
-      .order("username", { ascending: true })
-      .limit(8);
-
-    if (result.error) {
-      throw new Error(result.error.message || "Не удалось найти пользователей.");
-    }
-
-    return ((result.data ?? []) as ProfileRow[])
-      .filter((row) => isUuid(row.id))
-      .map((row) => normalizeProfileRow(row));
-  } catch (error) {
-    console.error("searchUsers error:", error);
-    return [];
-  }
-}
-
-
-export async function fetchChatById(
-  client: SupabaseClient,
-  currentUserId: string,
-  conversationId: string,
-): Promise<Chat | null> {
-  if (!isUuid(currentUserId) || !isUuid(conversationId)) {
-    return null;
-  }
-
-  const mineResult = await client
-    .from("conversation_participants")
-    .select("conversation_id,user_id")
-    .eq("user_id", currentUserId)
-    .eq("conversation_id", conversationId)
-    .limit(1);
-
-  if (mineResult.error) {
-    if (isMissingSchemaError(mineResult.error.message)) {
-      return null;
-    }
-    throw new Error(mineResult.error.message || "Не удалось проверить участие в чате.");
-  }
-
-  const mineRows = ((mineResult.data ?? []) as ConversationParticipantRow[]).filter((row) => isUuid(row.conversation_id));
-  if (mineRows.length === 0) {
-    return null;
-  }
-
-  const conversationResult = await client
-    .from("conversations")
-    .select("id,updated_at,last_message_preview")
-    .eq("id", conversationId)
-    .maybeSingle();
-
-  if (conversationResult.error) {
-    if (isMissingSchemaError(conversationResult.error.message)) {
-      return null;
-    }
-    throw new Error(conversationResult.error.message || "Не удалось загрузить чат.");
-  }
-
-  const conversation = conversationResult.data as ConversationRow | null;
-  if (!conversation) {
-    return null;
-  }
-
-  const participantsResult = await client
-    .from("conversation_participants")
-    .select("conversation_id,user_id")
-    .eq("conversation_id", conversationId);
-
-  if (participantsResult.error) {
-    if (isMissingSchemaError(participantsResult.error.message)) {
-      return null;
-    }
-    throw new Error(participantsResult.error.message || "Не удалось загрузить участников.");
-  }
-
-  const participants = ((participantsResult.data ?? []) as ConversationParticipantRow[]).filter(
-    (row) => isUuid(row.conversation_id) && isUuid(row.user_id),
-  );
-
-  const peerParticipant = participants.find((participant) => participant.user_id !== currentUserId);
-  let peerProfile: UserProfile | undefined;
-
-  if (peerParticipant) {
-    try {
-      const profileRows = await fetchProfileRows(client, { ids: [peerParticipant.user_id] });
-      const firstProfile = profileRows[0];
-      if (firstProfile) {
-        peerProfile = normalizeProfileRow(firstProfile);
-      }
-    } catch (error) {
-      console.error("fetchChatById profile error:", error);
-    }
-  }
-
-  const title = peerProfile?.name || peerProfile?.username || "Новый чат";
-
-  return {
-    id: conversation.id,
-    title,
-    avatar: peerProfile?.avatar || getInitials(title),
-    preview: conversation.last_message_preview?.trim() || "Сообщений пока нет",
-    updatedAt: conversation.updated_at || new Date().toISOString(),
-    unread: 0,
-    pinned: false,
-    peerId: peerProfile?.id,
-  };
 }
 
 export async function fetchChats(client: SupabaseClient, currentUserId: string): Promise<Chat[]> {
@@ -727,37 +586,15 @@ export async function toggleMessageReaction(
   }
 }
 
-
 export function subscribeToConversation(
   client: SupabaseClient,
   conversationId: string,
-  currentUserId: string,
-  callbacks: {
-    onDatabaseChange: () => void;
-    onReadReceipt?: (payload: { userId: string; readAt: string }) => void;
+  handlers: {
+    onMessagesChange: () => void;
+    onReadReceipt?: (payload: { readerId: string; readAt: string; conversationId: string }) => void;
   },
-): {
-  unsubscribe: () => void;
-  sendReadReceipt: (readAt: string) => Promise<void>;
-} {
+): { unsubscribe: () => void; sendReadReceipt: (payload: { readerId: string; readAt: string }) => Promise<void> } {
   let channel: RealtimeChannel | null = null;
-
-  const sendReadReceipt = async (readAt: string) => {
-    if (!channel) return;
-    try {
-      await channel.send({
-        type: "broadcast",
-        event: "read_receipt",
-        payload: {
-          conversationId,
-          userId: currentUserId,
-          readAt,
-        },
-      });
-    } catch (error) {
-      console.error("sendReadReceipt error:", error);
-    }
-  };
 
   try {
     channel = client
@@ -770,7 +607,7 @@ export function subscribeToConversation(
           table: "messages",
           filter: `conversation_id=eq.${conversationId}`,
         },
-        () => callbacks.onDatabaseChange(),
+        () => handlers.onMessagesChange(),
       )
       .on(
         "postgres_changes",
@@ -779,19 +616,14 @@ export function subscribeToConversation(
           schema: "public",
           table: "message_reactions",
         },
-        () => callbacks.onDatabaseChange(),
+        () => handlers.onMessagesChange(),
       )
-      .on("broadcast", { event: "read_receipt" }, (payload) => {
-        const next = (payload.payload ?? {}) as Record<string, unknown>;
-        const userId = getString(next.userId);
-        const readAt = getString(next.readAt);
-        const targetConversationId = getString(next.conversationId);
-
-        if (!userId || !readAt || !targetConversationId) return;
-        if (targetConversationId !== conversationId) return;
-        if (userId === currentUserId) return;
-
-        callbacks.onReadReceipt?.({ userId, readAt });
+      .on("broadcast", { event: "read_receipt" }, ({ payload }) => {
+        const readerId = getString((payload as Record<string, unknown>)?.readerId);
+        const readAt = getString((payload as Record<string, unknown>)?.readAt);
+        const targetConversationId = getString((payload as Record<string, unknown>)?.conversationId);
+        if (!readerId || !readAt || targetConversationId !== conversationId) return;
+        handlers.onReadReceipt?.({ readerId, readAt, conversationId: targetConversationId });
       })
       .subscribe();
   } catch (error) {
@@ -804,16 +636,29 @@ export function subscribeToConversation(
         void client.removeChannel(channel);
       }
     },
-    sendReadReceipt,
+    sendReadReceipt: async ({ readerId, readAt }) => {
+      if (!channel) return;
+      await channel.send({
+        type: "broadcast",
+        event: "read_receipt",
+        payload: {
+          conversationId,
+          readerId,
+          readAt,
+        },
+      });
+    },
   };
 }
-
-
 
 export function subscribeToChatList(
   client: SupabaseClient,
   currentUserId: string,
-  callback: (event: ChatListRealtimeEvent) => void,
+  callback: (event: {
+    source: "participants" | "conversations" | "messages";
+    eventType: string;
+    payload: Record<string, unknown>;
+  }) => void,
 ): () => void {
   const channels: RealtimeChannel[] = [];
 
@@ -823,34 +668,31 @@ export function subscribeToChatList(
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "conversation_participants",
           filter: `user_id=eq.${currentUserId}`,
         },
-        (payload) => {
-          const conversationId = getString((payload.new as Record<string, unknown> | null)?.conversation_id);
-          if (!conversationId) return;
-          callback({ kind: "participant_insert", conversationId });
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "conversation_participants",
-          filter: `user_id=eq.${currentUserId}`,
-        },
-        (payload) => {
-          const conversationId = getString((payload.old as Record<string, unknown> | null)?.conversation_id);
-          if (!conversationId) return;
-          callback({ kind: "participant_delete", conversationId });
-        },
+        (payload) => callback({ source: "participants", eventType: payload.eventType, payload: payload as unknown as Record<string, unknown> }),
       )
       .subscribe();
 
     channels.push(participantsChannel);
+
+    const conversationsChannel = client
+      .channel(`chat-list-conversations:${currentUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "conversations",
+        },
+        (payload) => callback({ source: "conversations", eventType: payload.eventType, payload: payload as unknown as Record<string, unknown> }),
+      )
+      .subscribe();
+
+    channels.push(conversationsChannel);
 
     const messagesChannel = client
       .channel(`chat-list-messages:${currentUserId}`)
@@ -861,85 +703,11 @@ export function subscribeToChatList(
           schema: "public",
           table: "messages",
         },
-        (payload) => {
-          const next = (payload.new as Record<string, unknown> | null) ?? {};
-          const conversationId = getString(next.conversation_id);
-          if (!conversationId) return;
-          const text = getString(next.text).trim();
-          const preview = text || (next.voice_duration ? "🎤 Голосовое сообщение" : "Сообщение");
-          callback({
-            kind: "message_insert",
-            conversationId,
-            preview,
-            createdAt: getString(next.created_at, new Date().toISOString()),
-            senderId: getString(next.sender_id),
-          });
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "messages",
-        },
-        (payload) => {
-          const next = (payload.new as Record<string, unknown> | null) ?? {};
-          const conversationId = getString(next.conversation_id);
-          if (!conversationId) return;
-          const text = getString(next.text).trim();
-          const preview = text || (next.voice_duration ? "🎤 Голосовое сообщение" : "Сообщение");
-          callback({
-            kind: "message_update",
-            conversationId,
-            preview,
-            createdAt: getString(next.created_at, new Date().toISOString()),
-            senderId: getString(next.sender_id),
-          });
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "messages",
-        },
-        (payload) => {
-          const prev = (payload.old as Record<string, unknown> | null) ?? {};
-          const conversationId = getString(prev.conversation_id);
-          if (!conversationId) return;
-          callback({ kind: "message_delete", conversationId });
-        },
+        (payload) => callback({ source: "messages", eventType: payload.eventType, payload: payload as unknown as Record<string, unknown> }),
       )
       .subscribe();
 
     channels.push(messagesChannel);
-
-    const conversationsChannel = client
-      .channel(`chat-list-conversations:${currentUserId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "conversations",
-        },
-        (payload) => {
-          const next = (payload.new as Record<string, unknown> | null) ?? {};
-          const conversationId = getString(next.id);
-          if (!conversationId) return;
-          callback({
-            kind: "conversation_update",
-            conversationId,
-            preview: getNullableString(next.last_message_preview),
-            updatedAt: getNullableString(next.updated_at),
-          });
-        },
-      )
-      .subscribe();
-
-    channels.push(conversationsChannel);
   } catch (error) {
     console.error("subscribeToChatList error:", error);
   }
@@ -950,63 +718,3 @@ export function subscribeToChatList(
     }
   };
 }
-
-export function subscribeToPresence(
-  client: SupabaseClient,
-  currentUserId: string,
-  activeChatId: string | null,
-  lastReadAt: string | null,
-  callback: (presence: PresenceStateMap) => void,
-): () => void {
-  let channel: RealtimeChannel | null = null;
-
-  const emitPresence = () => {
-    const rawState = channel?.presenceState<Record<string, unknown>[]>() ?? {};
-    const nextPresence: PresenceStateMap = {};
-
-    for (const [userId, entries] of Object.entries(rawState)) {
-      const firstEntry = Array.isArray(entries) && entries.length > 0 ? entries[0] : {};
-      const entry = (firstEntry ?? {}) as Record<string, unknown>;
-      nextPresence[userId] = {
-        online: true,
-        activeChatId: getNullableString(entry.active_chat_id) ?? null,
-        lastReadAt: getNullableString(entry.last_read_at) ?? null,
-      };
-    }
-
-    callback(nextPresence);
-  };
-
-  try {
-    channel = client
-      .channel("presence:ignitechat", {
-        config: {
-          presence: {
-            key: currentUserId,
-          },
-        },
-      })
-      .on("presence", { event: "sync" }, emitPresence)
-      .subscribe(async (status) => {
-        if (status === "SUBSCRIBED" && channel) {
-          await channel.track({
-            user_id: currentUserId,
-            online_at: new Date().toISOString(),
-            active_chat_id: activeChatId,
-            last_read_at: lastReadAt,
-          });
-          emitPresence();
-        }
-      });
-  } catch (error) {
-    console.error("subscribeToPresence error:", error);
-  }
-
-  return () => {
-    if (channel) {
-      void channel.untrack();
-      void client.removeChannel(channel);
-    }
-  };
-}
-
