@@ -135,7 +135,8 @@ export function readStoredProfile(): EditableAuthProfile | null {
 async function upsertProfile(user: User, profile: EditableAuthProfile) {
   const client = requireAuthClient();
 
-  const username =
+  // Генерируем читаемый username, если он не указан
+  const baseUsername =
     profile.username ||
     (user.email ? user.email.split("@")[0] : `user_${user.id.slice(0, 6)}`).toLowerCase();
 
@@ -143,31 +144,33 @@ async function upsertProfile(user: User, profile: EditableAuthProfile) {
     profile.name ||
     user.user_metadata?.name ||
     user.user_metadata?.username ||
-    username;
+    baseUsername;
 
-  const bio = profile.bio || "";
-  const phone = profile.phone || "";
-  const location = profile.location || "";
-  const status = profile.statusText || "";
-  const avatarUrl = profile.avatarDataUrl || "";
+  const updateData: any = {
+    id: user.id,
+    username: baseUsername,
+    name,
+    bio: profile.bio || "",
+    phone: user.phone || profile.phone || "",
+    email: user.email || null, // Явно передаем null, если почты нет
+    location: profile.location || "",
+    status: profile.statusText || "в сети",
+    avatar_url: profile.avatarDataUrl || "",
+    updated_at: new Date().toISOString(),
+  };
 
-  const { error } = await client.from("profiles").upsert(
-    {
-      id: user.id,
-      username,
-      name,
-      bio,
-      phone,
-      location,
-      status,
-      avatar_url: avatarUrl,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "id" },
-  );
+  const { error } = await client.from("profiles").upsert(updateData, { onConflict: "id" });
 
   if (error) {
-    throw error;
+    console.error("Profile upsert error details:", error);
+    // Если ошибка в уникальности username, пробуем добавить суффикс
+    if (error.code === "23505" && error.message.includes("username")) {
+      updateData.username = `${baseUsername}_${Math.floor(Math.random() * 1000)}`;
+      const { error: retryError } = await client.from("profiles").upsert(updateData, { onConflict: "id" });
+      if (retryError) throw retryError;
+    } else {
+      throw new Error(`Ошибка базы данных: ${error.message}`);
+    }
   }
 }
 
@@ -209,79 +212,53 @@ export async function syncProfileToSupabase(profile: EditableAuthProfile) {
   }
 }
 
-export async function submitAuth(payload: RegisterPayload, mode: AuthSubmitMode) {
-  const profile = normalizeProfile({
-    name: payload.name,
-    username: payload.username,
-    bio: payload.bio,
-    email: payload.email,
-    password: payload.password,
-    phone: payload.phone,
-    location: payload.location,
-    statusText: payload.statusText,
-    avatarDataUrl: payload.avatarDataUrl,
+export async function sendPhoneOtp(phone: string) {
+  const client = requireAuthClient();
+  const { error } = await client.auth.signInWithOtp({
+    phone: phone.trim(),
+  });
+  if (error) throw normalizeAuthError(error);
+}
+
+export async function verifyPhoneOtp(phone: string, token: string) {
+  const client = requireAuthClient();
+  const { data, error } = await client.auth.verifyOtp({
+    phone: phone.trim(),
+    token: token.trim(),
+    type: "sms",
   });
 
-  const client = requireAuthClient();
+  if (error) throw normalizeAuthError(error);
+  if (!data.user) throw new Error("Не удалось выполнить вход.");
 
-  try {
-    if (mode === "register") {
-      const { data, error } = await client.auth.signUp({
-        email: profile.email,
-        password: profile.password,
-        options: {
-          data: {
-            name: profile.name,
-            username: profile.username,
-            bio: profile.bio,
-            phone: profile.phone,
-            location: profile.location,
-            statusText: profile.statusText,
-            avatarDataUrl: profile.avatarDataUrl,
-          },
-        },
-      });
+  const existingProfile = await fetchProfileByUserId(data.user.id);
+  
+  const profile = normalizeProfile({
+    name: existingProfile?.name || "",
+    username: existingProfile?.username || "",
+    phone: phone.trim(),
+    email: data.user.email || "",
+  });
 
-      if (error) throw error;
-
-      const user = data.user;
-      if (!user) {
-        throw new Error("Не удалось создать пользователя.");
-      }
-
-      await upsertProfile(user, profile);
-      safeStorageSet(AUTH_STORAGE_KEY, "1");
-      safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(profile));
-      return profile;
-    }
-
-    const { data, error } = await client.auth.signInWithPassword({
-      email: profile.email,
-      password: profile.password,
-    });
-
-    if (error) throw error;
-    if (!data.user) throw new Error("Не удалось выполнить вход.");
-
-    const existingProfile = await fetchProfileByUserId(data.user.id);
-
-    const mergedProfile = normalizeProfile({
-      ...profile,
-      name: existingProfile?.name || profile.name,
-      username: existingProfile?.username || profile.username,
-      bio: existingProfile?.bio || profile.bio,
-      phone: existingProfile?.phone || profile.phone,
-      location: existingProfile?.location || profile.location,
-      statusText: existingProfile?.status || profile.statusText,
-      avatarDataUrl: existingProfile?.avatar_url || profile.avatarDataUrl,
-    });
-
+  if (existingProfile) {
     safeStorageSet(AUTH_STORAGE_KEY, "1");
-    safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(mergedProfile));
-    return mergedProfile;
-  } catch (error) {
-    throw normalizeAuthError(error);
+    safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(profile));
   }
+
+  return { user: data.user, isNewUser: !existingProfile };
+}
+
+export async function completePhoneRegistration(user: User, payload: Partial<EditableAuthProfile>) {
+  const profile = normalizeProfile({
+    ...payload,
+    phone: user.phone || payload.phone || "",
+    email: user.email || payload.email || "",
+  });
+
+  await upsertProfile(user, profile);
+  safeStorageSet(AUTH_STORAGE_KEY, "1");
+  safeStorageSet(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+  return profile;
 }
 
 export async function signOutApp() {

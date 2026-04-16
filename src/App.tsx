@@ -17,7 +17,6 @@ import {
   readStoredProfile,
   restoreAuthProfile,
   signOutApp,
-  submitAuth,
   supabaseConfigError,
   syncProfileToSupabase,
 } from "./lib/auth";
@@ -1273,9 +1272,8 @@ export default function App() {
     }
   }
 
-  const handleAuthComplete = async (payload: RegisterPayload, mode: AuthMode) => {
-    const nextProfile = (await submitAuth(payload, mode)) as EditableAuthProfile;
-    setAuthProfile(nextProfile);
+  const handleAuthComplete = (payload: RegisterPayload) => {
+    setAuthProfile(payload as EditableAuthProfile);
     setIsAuthenticated(true);
     setAuthBooting(false);
     setAuthRefreshKey((prev) => prev + 1);

@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { AtSign, Lock, Mail, User, Send, ChevronRight, ChevronLeft, Sparkles, MessageCircle, ShieldCheck, Zap, Globe, Rocket } from "lucide-react";
+import { AtSign, Lock, Mail, User, Send, ChevronRight, ChevronLeft, Sparkles, MessageCircle, ShieldCheck, Zap, Globe, Rocket, Phone } from "lucide-react";
+import { sendPhoneOtp, verifyPhoneOtp, completePhoneRegistration } from "./lib/auth";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
+import type { EditableAuthProfile } from "./chat-types";
 
 export type AuthFormState = {
   name: string;
@@ -109,9 +112,12 @@ export default function AuthPage({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [localNotice, setLocalNotice] = useState<AuthNotice | null>(notice);
   
-  // Состояние онбординга
+  // Состояние онбординга и шагов
   const [currentSlide, setCurrentSlide] = useState(0);
   const [showAuth, setShowAuth] = useState(false);
+  const [step, setStep] = useState<"phone" | "otp" | "profile">("phone");
+  const [otpToken, setOtpToken] = useState("");
+  const [tempUser, setTempUser] = useState<SupabaseUser | null>(null);
 
   useEffect(() => {
     setMode(preferredMode);
@@ -137,14 +143,62 @@ export default function AuthPage({
     }));
   };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSubmitError(null);
+  const handlePhoneSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.phone) return;
     setSubmitting(true);
+    setSubmitError(null);
     try {
-      await onComplete(form, mode);
-    } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Ошибка авторизации.");
+      await sendPhoneOtp(form.phone);
+      setStep("otp");
+    } catch (err: any) {
+      setSubmitError(err.message || "Ошибка отправки кода.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otpToken) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const { user, isNewUser } = await verifyPhoneOtp(form.phone || "", otpToken);
+      if (isNewUser) {
+        setTempUser(user);
+        setStep("profile");
+      } else {
+        // Fetch full profile and complete
+        const profile: EditableAuthProfile = {
+          ...initialForm,
+          phone: form.phone || "",
+          name: user.user_metadata?.name || "",
+          username: user.user_metadata?.username || "",
+        };
+        await onComplete(profile, "login");
+      }
+    } catch (err: any) {
+      setSubmitError(err.message || "Неверный код.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleProfileSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tempUser) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const profile = await completePhoneRegistration(tempUser, {
+        name: form.name,
+        username: form.username,
+        bio: form.bio,
+      });
+      await onComplete(profile, "register");
+    } catch (err: any) {
+      setSubmitError(err.message || "Ошибка сохранения профиля.");
     } finally {
       setSubmitting(false);
     }
@@ -285,118 +339,149 @@ export default function AuthPage({
               animate={{ opacity: 1, y: 0 }}
               className="flex flex-col items-center"
             >
-              {/* Стеклянная карточка в стиле TG */}
               <div className="w-full overflow-hidden rounded-[32px] border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur-2xl">
                 
-              <div className="mb-6 flex flex-col items-center text-center md:mb-8">
-                   <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="relative mb-4 h-20 w-20 overflow-hidden rounded-full bg-blue-600 flex items-center justify-center text-2xl font-bold md:mb-6 md:h-24 md:w-24 md:text-3xl"
-                  >
-                    {initials}
-                  </motion.div>
-                  <h2 className="text-xl font-bold text-white md:text-2xl">
-                    {mode === "register" ? "Регистрация" : "Вход"}
+                <div className="mb-8 flex flex-col items-center text-center">
+                  {step === "profile" ? (
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="relative mb-6 h-20 w-20 overflow-hidden rounded-full bg-blue-600 flex items-center justify-center text-2xl font-bold"
+                    >
+                      {initials}
+                    </motion.div>
+                  ) : (
+                    <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-blue-600/20 text-blue-500">
+                      <Phone size={40} />
+                    </div>
+                  )}
+                  
+                  <h2 className="text-2xl font-bold text-white">
+                    {step === "phone" ? "Ваш номер" : step === "otp" ? "Код из SMS" : "О себе"}
                   </h2>
-                  <p className="mt-1 text-xs text-slate-400 md:mt-2 md:text-sm">
-                    {mode === "register" ? "Введите данные для профиля" : "Введите ваш email и пароль"}
+                  <p className="mt-2 text-sm text-slate-400">
+                    {step === "phone" 
+                      ? "Введите номер телефона для входа или регистрации" 
+                      : step === "otp" 
+                        ? `Мы отправили код на ${form.phone}` 
+                        : "Почти готово! Как вас зовут?"}
                   </p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  {mode === "register" && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      className="space-y-4"
-                    >
-                      <div className="relative">
-                        <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
-                        <input
-                          type="text"
-                          name="name"
-                          required
-                          value={form.name}
-                          onChange={handleChange}
-                          placeholder="Имя"
-                          className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-12 text-white placeholder:text-slate-500 outline-none focus:border-blue-500/50 transition"
-                        />
-                      </div>
-                      <div className="relative">
-                        <AtSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
-                        <input
-                          type="text"
-                          name="username"
-                          required
-                          value={form.username}
-                          onChange={handleChange}
-                          placeholder="Никнейм"
-                          className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-12 text-white placeholder:text-slate-500 outline-none focus:border-blue-500/50 transition"
-                        />
-                      </div>
-                    </motion.div>
-                  )}
-
-                  <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
-                    <input
-                      type="email"
-                      name="email"
-                      required
-                      value={form.email}
-                      onChange={handleChange}
-                      placeholder="Email"
-                      className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-12 text-white placeholder:text-slate-500 outline-none focus:border-blue-500/50 transition"
-                    />
-                  </div>
-
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
-                    <input
-                      type="password"
-                      name="password"
-                      required
-                      value={form.password}
-                      onChange={handleChange}
-                      placeholder="Пароль"
-                      className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-12 text-white placeholder:text-slate-500 outline-none focus:border-blue-500/50 transition"
-                    />
-                  </div>
-
-                  {submitError && (
-                    <div className="text-red-400 text-sm text-center bg-red-400/10 py-2 rounded-lg">
-                      {submitError}
+                {step === "phone" && (
+                  <form onSubmit={handlePhoneSubmit} className="space-y-4">
+                    <div className="relative">
+                      <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
+                      <input
+                        type="tel"
+                        name="phone"
+                        required
+                        value={form.phone || ""}
+                        onChange={handleChange}
+                        placeholder="+7 999 000-00-00"
+                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-12 text-white placeholder:text-slate-500 outline-none focus:border-blue-500/50 transition"
+                      />
                     </div>
-                  )}
+                    {submitError && <p className="text-red-400 text-xs text-center">{submitError}</p>}
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      type="submit"
+                      disabled={submitting}
+                      className="w-full h-14 bg-blue-600 rounded-2xl text-white font-bold text-lg mt-4 flex items-center justify-center gap-2"
+                    >
+                      {submitting ? "Отправка..." : "Далее"}
+                      <ChevronRight size={20} />
+                    </motion.button>
+                  </form>
+                )}
 
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    type="submit"
-                    disabled={submitting}
-                    className="w-full h-14 bg-blue-600 rounded-2xl text-white font-bold text-lg mt-4 flex items-center justify-center gap-2"
-                  >
-                    {submitting ? "Подождите..." : mode === "register" ? "Зарегистрироваться" : "Войти"}
-                    {!submitting && <ChevronRight size={20} />}
-                  </motion.button>
-                </form>
+                {step === "otp" && (
+                  <form onSubmit={handleOtpSubmit} className="space-y-4">
+                    <div className="relative">
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
+                      <input
+                        type="text"
+                        name="otp"
+                        required
+                        autoFocus
+                        value={otpToken}
+                        onChange={(e) => setOtpToken(e.target.value)}
+                        placeholder="000000"
+                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-12 text-white text-center tracking-[1em] text-xl placeholder:text-slate-500 outline-none focus:border-blue-500/50 transition"
+                      />
+                    </div>
+                    {submitError && <p className="text-red-400 text-xs text-center">{submitError}</p>}
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      type="submit"
+                      disabled={submitting}
+                      className="w-full h-14 bg-blue-600 rounded-2xl text-white font-bold text-lg mt-4 flex items-center justify-center gap-2"
+                    >
+                      {submitting ? "Проверка..." : "Подтвердить"}
+                      <ChevronRight size={20} />
+                    </motion.button>
+                    <button 
+                      type="button"
+                      onClick={() => setStep("phone")}
+                      className="w-full text-center text-sm text-slate-500 hover:text-white transition"
+                    >
+                      Изменить номер
+                    </button>
+                  </form>
+                )}
 
-                <div className="mt-8 text-center">
-                  <button
-                    onClick={() => setMode(mode === "register" ? "login" : "register")}
-                    className="text-blue-400 font-semibold hover:underline"
-                  >
-                    {mode === "register" ? "Уже есть аккаунт? Войти" : "Нет аккаунта? Зарегистрироваться"}
-                  </button>
-                </div>
+                {step === "profile" && (
+                  <form onSubmit={handleProfileSubmit} className="space-y-4">
+                    <div className="relative">
+                      <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
+                      <input
+                        type="text"
+                        name="name"
+                        required
+                        value={form.name}
+                        onChange={handleChange}
+                        placeholder="Ваше имя"
+                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-12 text-white placeholder:text-slate-500 outline-none focus:border-blue-500/50 transition"
+                      />
+                    </div>
+                    <div className="relative">
+                      <AtSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
+                      <input
+                        type="text"
+                        name="username"
+                        required
+                        value={form.username}
+                        onChange={handleChange}
+                        placeholder="Никнейм"
+                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-12 text-white placeholder:text-slate-500 outline-none focus:border-blue-500/50 transition"
+                      />
+                    </div>
+                    {submitError && <p className="text-red-400 text-xs text-center">{submitError}</p>}
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      type="submit"
+                      disabled={submitting}
+                      className="w-full h-14 bg-blue-600 rounded-2xl text-white font-bold text-lg mt-4 flex items-center justify-center gap-2"
+                    >
+                      {submitting ? "Сохранение..." : "Завершить"}
+                      <ChevronRight size={20} />
+                    </motion.button>
+                  </form>
+                )}
+
               </div>
               
               <button 
-                onClick={() => setShowAuth(false)}
+                onClick={() => {
+                  setShowAuth(false);
+                  setStep("phone");
+                }}
                 className="mt-6 text-slate-500 hover:text-white transition"
               >
-                Вернуться назад
+                Вернуться в начало
               </button>
             </motion.div>
           )}
