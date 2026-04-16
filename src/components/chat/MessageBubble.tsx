@@ -99,20 +99,46 @@ function MessageBubble({
     return <Check className="h-3.5 w-3.5 text-slate-400" />;
   };
 
+  const [lastClickTime, setLastClickTime] = React.useState(0);
+  const clickTimeoutRef = React.useRef<number | null>(null);
+
+  const handleBubbleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const now = Date.now();
+    const diff = now - lastClickTime;
+
+    if (diff < 300) {
+      if (clickTimeoutRef.current) {
+        window.clearTimeout(clickTimeoutRef.current);
+        clickTimeoutRef.current = null;
+      }
+      // Double click - Telegram style: add Like
+      onReaction(message.id, "like");
+      setHoveredMsg(null);
+      setLastClickTime(0);
+    } else {
+      setLastClickTime(now);
+      if (clickTimeoutRef.current) window.clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = window.setTimeout(() => {
+        // Single click - toggle menu
+        setHoveredMsg(isMenuOpen ? null : message.id);
+        clickTimeoutRef.current = null;
+      }, 300);
+    }
+  };
+
   return (
     <div
       className={`${mine ? "flex justify-end" : "flex justify-start"} ${groupedWithPrev ? "mt-1" : "mt-4"} group relative ${message.reactions.length > 0 ? "mb-3" : ""}`}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        setHoveredMsg(message.id);
-      }}
-      onClick={(e) => {
-        e.stopPropagation();
-        setHoveredMsg(isMenuOpen ? null : message.id);
-      }}
     >
       <div
-        className={`message-bubble relative max-w-[min(98%,1120px)] px-3.5 py-3 transition-transform duration-200 ${
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setHoveredMsg(message.id);
+        }}
+        onClick={handleBubbleClick}
+        className={`message-bubble relative max-w-[min(98%,1120px)] cursor-pointer px-3.5 py-3 transition-transform duration-200 ${
           isMenuOpen ? (mine ? "-translate-x-2" : "translate-x-2") : ""
         } ${radiusClass} ${
           mine

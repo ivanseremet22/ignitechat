@@ -54,10 +54,13 @@ export default function Sidebar({
 
   return (
     <motion.aside
-      initial={false}
-      animate={isDesktop || mobileSidebarOpen ? { x: 0 } : { x: -360 }}
-      transition={isDesktop ? { duration: 0.16 } : { type: "tween", ease: "easeOut", duration: 0.18 }}
-      className="absolute left-0 top-0 z-40 flex h-full w-[84vw] max-w-[320px] flex-col bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.98)_18%,rgba(244,247,251,0.99))] shadow-[8px_0_22px_rgba(15,23,42,0.06)] md:static md:z-0 md:flex md:w-[320px] md:max-w-none md:translate-x-0 md:shadow-none xl:w-[336px]"
+      initial={isDesktop ? false : { x: "-100%" }}
+      animate={isDesktop ? { x: 0 } : { x: mobileSidebarOpen ? 0 : "-100%" }}
+      exit={isDesktop ? false : { x: "-100%" }}
+      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+      className={`fixed inset-y-0 left-0 z-40 flex w-full flex-col border-r border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,249,241,0.94))] shadow-xl md:relative md:z-0 md:w-[320px] md:shadow-none lg:w-[360px] ${
+        !isDesktop && !mobileSidebarOpen ? "pointer-events-none" : ""
+      }`}
     >
       <div className="relative px-4 py-4">
         <div className="pointer-events-none absolute inset-x-3 top-2 h-28 rounded-[28px] bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.18),transparent_58%),radial-gradient(circle_at_top_right,rgba(249,115,22,0.10),transparent_46%)]" />

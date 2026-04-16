@@ -109,14 +109,14 @@ export default function ChatView({
   return (
     <>
       <header
-        className="chat-header-shell mobile-no-blur relative z-10 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,249,240,0.92))] px-3 py-3 md:px-5 lg:px-6"
-        style={{ paddingTop: "max(1rem, env(safe-area-inset-top))" }}
+        className="chat-header-shell mobile-no-blur relative z-10 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,249,240,0.92))] px-2.5 py-2.5 md:px-5 lg:px-6"
+        style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3">
           <Button
             variant="ghost"
             size="icon"
-            className="rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 md:hidden"
+            className="h-9 w-9 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 md:hidden"
             onClick={() => setMobileSidebarOpen(true)}
           >
             <Menu className="h-5 w-5" />
@@ -125,55 +125,55 @@ export default function ChatView({
           <button
             type="button"
             onClick={openPeerProfile}
-            className="group flex min-w-0 items-center gap-3 rounded-2xl transition hover:bg-white/70 hover:px-1.5 hover:py-1"
+            className="group flex min-w-0 items-center gap-2.5 rounded-2xl transition hover:bg-white/70 md:gap-3"
           >
-            <Avatar className="h-11 w-11">
+            <Avatar className="h-10 w-10 md:h-11 md:w-11">
               <AvatarFallback className={`bg-gradient-to-br ${activeProfile?.accent || "from-amber-400 to-orange-300"} text-slate-900`}>
                 {activeChat.avatar}
               </AvatarFallback>
             </Avatar>
 
             <div className="min-w-0 flex-1 text-left">
-              <div className="truncate text-[15px] font-medium">{activeChat.title}</div>
-              <div className="flex items-center gap-2 text-xs text-amber-600">
+              <div className="truncate text-sm font-semibold md:text-[15px]">{activeChat.title}</div>
+              <div className="flex items-center gap-2 text-[10px] md:text-xs text-amber-600">
                 {showTyping ? (
-                  <span className="inline-flex items-center gap-2 text-amber-600">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
-                    отправка / bot loop…
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-1 w-1 animate-pulse rounded-full bg-amber-500 md:h-1.5 md:w-1.5" />
+                    typing…
                   </span>
                 ) : (
-                  <span>{activePeer?.status || "в сети"}</span>
+                  <span className="truncate">{activePeer?.status || "в сети"}</span>
                 )}
               </div>
             </div>
           </button>
 
-          <div className="ml-auto flex items-center gap-1 sm:gap-1.5">
+          <div className="ml-auto flex items-center gap-0.5 sm:gap-1.5">
             <Button
               variant="ghost"
               size="icon"
               onClick={openMyProfile}
-              className="overflow-hidden rounded-full border border-slate-200/80 bg-white/90 p-0 shadow-sm hover:bg-white"
+              className="h-9 w-9 overflow-hidden rounded-full border border-slate-200/80 bg-white/90 p-0 shadow-sm hover:bg-white md:h-10 md:w-10"
             >
               {myProfile ? (
                 <AppAvatar
-                  className="h-10 w-10"
+                  className="h-full w-full"
                   initials={myProfile.avatar}
                   imageUrl={myProfile.avatarUrl}
                   accent={myProfile.accent}
-                  fallbackClassName="text-slate-900"
+                  fallbackClassName="text-slate-900 text-xs"
                 />
               ) : (
-                <UserRound className="h-5 w-5" />
+                <UserRound className="h-4 w-4 md:h-5 md:w-5" />
               )}
             </Button>
-            <Button variant="ghost" size="icon" className="hidden sm:inline-flex">
+            <Button variant="ghost" size="icon" className="hidden lg:inline-flex">
               <Search className="h-5 w-5" />
             </Button>
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" className="hidden sm:inline-flex">
               <Phone className="h-5 w-5" />
             </Button>
-            <Button variant="ghost" size="icon" className="hidden sm:inline-flex">
+            <Button variant="ghost" size="icon" className="hidden md:inline-flex">
               <MoreVertical className="h-5 w-5" />
             </Button>
           </div>
@@ -313,9 +313,9 @@ export default function ChatView({
         <motion.div
           animate={sendPulse ? { scale: [1, 1.01, 1] } : { scale: 1 }}
           transition={{ duration: 0.36, ease: "easeOut" }}
-          className="mobile-lite-shadow flex items-end gap-1.5 rounded-[28px] border border-white/80 bg-white/96 px-2 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.04)]"
+          className="mobile-lite-shadow flex items-end gap-1 rounded-[28px] border border-white/80 bg-white/96 px-1.5 py-1.5 shadow-[0_10px_24px_rgba(15,23,42,0.04)] md:gap-1.5 md:px-2 md:py-2"
         >
-          <Button variant="ghost" size="icon" className="hidden h-11 w-11 rounded-full sm:inline-flex">
+          <Button variant="ghost" size="icon" className="hidden h-10 w-10 shrink-0 rounded-full sm:inline-flex md:h-11 md:w-11">
             <Paperclip className="h-5 w-5" />
           </Button>
 
@@ -331,12 +331,12 @@ export default function ChatView({
               }}
               placeholder="Сообщение"
               rows={1}
-              className="max-h-36 min-h-[44px] resize-none rounded-[20px] border-transparent bg-transparent px-2.5 py-2.5 text-[15px] leading-6 shadow-none focus-visible:ring-0"
+              className="max-h-36 min-h-[40px] resize-none rounded-[20px] border-transparent bg-transparent px-2 py-2 text-[16px] leading-6 shadow-none focus-visible:ring-0 md:min-h-[44px] md:px-2.5 md:py-2.5 md:text-[15px]"
             />
           </div>
 
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="hidden h-11 w-11 rounded-full sm:inline-flex">
+          <div className="flex items-center gap-0.5 md:gap-1">
+            <Button variant="ghost" size="icon" className="hidden h-10 w-10 shrink-0 rounded-full sm:inline-flex md:h-11 md:w-11">
               <Smile className="h-5 w-5" />
             </Button>
 
@@ -350,27 +350,29 @@ export default function ChatView({
                 <Button
                   onClick={() => void handleSend()}
                   disabled={sending}
-                  className="h-11 w-11 rounded-full bg-gradient-to-br from-amber-400 via-orange-300 to-amber-200 text-slate-900 shadow-[0_10px_24px_rgba(245,158,11,0.18)] transition disabled:opacity-60"
+                  className="h-10 w-10 shrink-0 rounded-full bg-gradient-to-br from-amber-400 via-orange-400 to-yellow-300 p-0 text-slate-900 shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95 md:h-11 md:w-11"
                 >
                   <Send className="h-5 w-5" />
                 </Button>
               </motion.div>
             ) : (
-              <Button
-                onMouseDown={startRecord}
-                onMouseUp={stopRecord}
-                onMouseLeave={() => recording && stopRecord()}
-                onTouchStart={startRecord}
-                onTouchEnd={stopRecord}
-                className={
-                  "h-11 w-11 rounded-full transition " +
-                  (recording
-                    ? "bg-gradient-to-br from-red-500 to-orange-500 text-white shadow-[0_10px_24px_rgba(239,68,68,0.18)]"
-                    : "bg-gradient-to-br from-amber-400 via-orange-300 to-amber-200 text-slate-900 shadow-[0_10px_24px_rgba(245,158,11,0.18)]")
-                }
+              <motion.div
+                key="mic"
+                initial={{ scale: 0.88, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.88, opacity: 0 }}
               >
-                <Mic className="h-5 w-5" />
-              </Button>
+                <Button
+                  onClick={recording ? stopRecord : startRecord}
+                  className={`h-10 w-10 shrink-0 rounded-full p-0 shadow-lg transition-all duration-300 md:h-11 md:w-11 ${
+                    recording
+                      ? "bg-red-500 text-white animate-pulse shadow-red-500/20"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  <Mic className="h-5 w-5" />
+                </Button>
+              </motion.div>
             )}
           </div>
         </motion.div>

@@ -1502,7 +1502,9 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        <main className="chat-main-shell relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,#fbfcfe_0%,#f8fafc_38%,#f6f8fb_100%)] pb-[calc(68px+env(safe-area-inset-bottom))] md:pb-0">
+        <main className={`chat-main-shell relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,#fbfcfe_0%,#f8fafc_38%,#f6f8fb_100%)] ${
+          activeChat ? "pb-0" : "pb-[calc(68px+env(safe-area-inset-bottom))]"
+        } md:pb-0`}>
           <div className="pointer-events-none absolute inset-0 opacity-90">
             <div className="absolute -right-24 top-0 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(251,191,36,0.16),transparent_68%)]" />
             <div className="absolute left-10 top-24 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(59,130,246,0.08),transparent_70%)]" />
