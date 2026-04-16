@@ -275,6 +275,7 @@ export default function App() {
   const mobileEmptyStatePromptShownRef = useRef(false);
   const unreadCountRef = useRef<Record<string, number>>({});
   const chatsRef = useRef<Chat[]>([]);
+  const pendingChatLoadsRef = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
     let active = true;
@@ -501,11 +502,16 @@ export default function App() {
           const nextChat = await fetchChatById(client, currentUserId, event.conversationId);
           if (!active || !nextChat) return;
 
-          unreadCountRef.current[event.conversationId] =
-            typeof nextChat.unread === "number" ? nextChat.unread : 0;
+          const latestUnread = unreadCountRef.current[event.conversationId]
+            ?? (typeof nextChat.unread === "number" ? nextChat.unread : 0);
+
+          unreadCountRef.current[event.conversationId] = latestUnread;
 
           setChats((prev) => {
-            const nextItems = upsertChat(prev, nextChat);
+            const nextItems = upsertChat(prev, {
+              ...nextChat,
+              unread: latestUnread,
+            });
             chatsRef.current = nextItems;
             return nextItems;
           });
@@ -515,6 +521,7 @@ export default function App() {
 
         if (event.kind === "participant_delete") {
           delete unreadCountRef.current[event.conversationId];
+          delete pendingChatLoadsRef.current[event.conversationId];
           setChats((prev) => {
             const nextItems = prev.filter((chat) => chat.id !== event.conversationId);
             chatsRef.current = nextItems;
@@ -554,18 +561,37 @@ export default function App() {
           });
 
           if (!chatExists) {
-            const nextChat = await fetchChatById(client, currentUserId, event.conversationId);
-            if (!active || !nextChat) return;
-            setChats((prev) => {
-              const nextItems = upsertChat(prev, {
-                ...nextChat,
-                unread: nextUnread,
-                preview: event.preview,
-                updatedAt: event.createdAt,
+            if (pendingChatLoadsRef.current[event.conversationId]) {
+              return;
+            }
+
+            pendingChatLoadsRef.current[event.conversationId] = true;
+
+            try {
+              const nextChat = await fetchChatById(client, currentUserId, event.conversationId);
+              if (!active || !nextChat) return;
+
+              const latestUnread = unreadCountRef.current[event.conversationId] ?? nextUnread;
+              const latestPreview =
+                chatsRef.current.find((chat) => chat.id === event.conversationId)?.preview
+                ?? event.preview;
+              const latestUpdatedAt =
+                chatsRef.current.find((chat) => chat.id === event.conversationId)?.updatedAt
+                ?? event.createdAt;
+
+              setChats((prev) => {
+                const nextItems = upsertChat(prev, {
+                  ...nextChat,
+                  unread: latestUnread,
+                  preview: latestPreview,
+                  updatedAt: latestUpdatedAt,
+                });
+                chatsRef.current = nextItems;
+                return nextItems;
               });
-              chatsRef.current = nextItems;
-              return nextItems;
-            });
+            } finally {
+              delete pendingChatLoadsRef.current[event.conversationId];
+            }
           }
           return;
         }
