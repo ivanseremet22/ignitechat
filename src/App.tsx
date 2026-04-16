@@ -101,6 +101,28 @@ function createOptimisticMessage(input: {
   };
 }
 
+function mergeFetchedMessagesWithLocalState(
+  previousItems: Message[],
+  fetchedItems: Message[],
+): Message[] {
+  const previousMap = new Map(previousItems.map((message) => [message.id, message]));
+
+  return fetchedItems.map((message) => {
+    const previous = previousMap.get(message.id);
+    if (!previous) return message;
+
+    return {
+      ...message,
+      status:
+        previous.status === "seen" || previous.status === "delivered" || previous.status === "error"
+          ? previous.status
+          : message.status,
+      seen: Boolean(previous.seen) || Boolean(message.seen),
+    };
+  });
+}
+
+
 function decorateMessagesWithDeliveryState(
   items: Message[],
   currentUserId: string,
@@ -509,11 +531,25 @@ export default function App() {
           const nextChat = await fetchChatById(client, currentUserId, event.conversationId);
           if (!active || !nextChat) return;
 
-          unreadCountRef.current[event.conversationId] =
-            typeof nextChat.unread === "number" ? nextChat.unread : 0;
-
           setChats((prev) => {
-            const nextItems = upsertChat(prev, nextChat);
+            const existing = prev.find((chat) => chat.id === event.conversationId);
+            const preservedUnread =
+              unreadCountRef.current[event.conversationId] ??
+              existing?.unread ??
+              nextChat.unread ??
+              0;
+
+            unreadCountRef.current[event.conversationId] = preservedUnread;
+
+            const mergedChat: Chat = {
+              ...(existing ?? nextChat),
+              ...nextChat,
+              unread: preservedUnread,
+              preview: existing?.preview || nextChat.preview,
+              updatedAt: existing?.updatedAt || nextChat.updatedAt,
+            };
+
+            const nextItems = upsertChat(prev, mergedChat);
             chatsRef.current = nextItems;
             return nextItems;
           });
@@ -663,7 +699,7 @@ export default function App() {
         const nextMessages = await fetchMessages(client, activeChatId);
         if (!active) return;
         unreadCountRef.current[activeChatId] = 0;
-        setMessages(nextMessages);
+        setMessages((prev) => mergeFetchedMessagesWithLocalState(prev, nextMessages));
         setChats((prev) => resetChatUnread(prev, activeChatId));
       } catch (err: unknown) {
         if (!active) return;
