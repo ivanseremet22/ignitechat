@@ -10,11 +10,11 @@ type BottomNavBarProps = {
 
 export default function BottomNavBar({ activeTab, setActiveTab, unreadCount }: BottomNavBarProps) {
   const tabs = [
-    { id: "groups", icon: UserPlus },
-    { id: "chats", icon: MessageSquare },
-    { id: "post", icon: Home, isMain: true },
-    { id: "stats", icon: BarChart2 },
-    { id: "profile", icon: MessageCircle, hasBadge: (unreadCount ?? 0) > 0 },
+    { id: "groups", icon: UserPlus, isMain: false, hasBadge: false },
+    { id: "chats", icon: MessageSquare, isMain: false, hasBadge: false },
+    { id: "post", icon: Home, isMain: true, hasBadge: false },
+    { id: "stats", icon: BarChart2, isMain: false, hasBadge: false },
+    { id: "profile", icon: MessageCircle, isMain: false, hasBadge: (unreadCount ?? 0) > 0 },
   ] as const;
 
   return (
