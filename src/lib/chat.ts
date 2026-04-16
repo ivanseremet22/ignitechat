@@ -727,12 +727,37 @@ export async function toggleMessageReaction(
   }
 }
 
+
 export function subscribeToConversation(
   client: SupabaseClient,
   conversationId: string,
-  callback: () => void,
-): () => void {
+  currentUserId: string,
+  callbacks: {
+    onDatabaseChange: () => void;
+    onReadReceipt?: (payload: { userId: string; readAt: string }) => void;
+  },
+): {
+  unsubscribe: () => void;
+  sendReadReceipt: (readAt: string) => Promise<void>;
+} {
   let channel: RealtimeChannel | null = null;
+
+  const sendReadReceipt = async (readAt: string) => {
+    if (!channel) return;
+    try {
+      await channel.send({
+        type: "broadcast",
+        event: "read_receipt",
+        payload: {
+          conversationId,
+          userId: currentUserId,
+          readAt,
+        },
+      });
+    } catch (error) {
+      console.error("sendReadReceipt error:", error);
+    }
+  };
 
   try {
     channel = client
@@ -745,7 +770,7 @@ export function subscribeToConversation(
           table: "messages",
           filter: `conversation_id=eq.${conversationId}`,
         },
-        () => callback(),
+        () => callbacks.onDatabaseChange(),
       )
       .on(
         "postgres_changes",
@@ -754,17 +779,32 @@ export function subscribeToConversation(
           schema: "public",
           table: "message_reactions",
         },
-        () => callback(),
+        () => callbacks.onDatabaseChange(),
       )
+      .on("broadcast", { event: "read_receipt" }, (payload) => {
+        const next = (payload.payload ?? {}) as Record<string, unknown>;
+        const userId = getString(next.userId);
+        const readAt = getString(next.readAt);
+        const targetConversationId = getString(next.conversationId);
+
+        if (!userId || !readAt || !targetConversationId) return;
+        if (targetConversationId !== conversationId) return;
+        if (userId === currentUserId) return;
+
+        callbacks.onReadReceipt?.({ userId, readAt });
+      })
       .subscribe();
   } catch (error) {
     console.error("subscribeToConversation error:", error);
   }
 
-  return () => {
-    if (channel) {
-      void client.removeChannel(channel);
-    }
+  return {
+    unsubscribe: () => {
+      if (channel) {
+        void client.removeChannel(channel);
+      }
+    },
+    sendReadReceipt,
   };
 }
 

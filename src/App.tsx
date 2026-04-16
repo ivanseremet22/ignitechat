@@ -104,14 +104,17 @@ function createOptimisticMessage(input: {
 function decorateMessagesWithDeliveryState(
   items: Message[],
   currentUserId: string,
-  seenCursorAt: string | null,
+  peerOnline: boolean,
+  peerViewingChat: boolean,
+  peerLastReadAt: string | null,
 ): Message[] {
-  const seenCursorMs = seenCursorAt ? new Date(seenCursorAt).getTime() : 0;
+  let hasLaterIncoming = false;
 
   return [...items]
     .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
     .map((message) => {
       if (message.senderId !== currentUserId) {
+        hasLaterIncoming = true;
         return {
           ...message,
           status: message.status === "error" ? "error" : "sent",
@@ -123,11 +126,19 @@ function decorateMessagesWithDeliveryState(
         return message;
       }
 
-      const seen = Boolean(message.seen) || (seenCursorMs > 0 && new Date(message.createdAt).getTime() <= seenCursorMs);
+      const peerLastReadMs = peerLastReadAt ? new Date(peerLastReadAt).getTime() : 0;
+      const messageCreatedMs = new Date(message.createdAt).getTime();
+      const seen = Boolean(message.seen) || (peerViewingChat && peerLastReadMs >= messageCreatedMs);
+      const delivered =
+        seen ||
+        message.status === "delivered" ||
+        message.status === "seen" ||
+        peerOnline ||
+        hasLaterIncoming;
 
       return {
         ...message,
-        status: seen ? "seen" : "sent",
+        status: seen ? "seen" : delivered ? "delivered" : "sent",
         seen,
       };
     });
@@ -209,35 +220,59 @@ function unreadStorageKey(userId: string) {
   return `ignite.unread.${userId}`;
 }
 
-function seenCursorStorageKey(userId: string) {
-  return `ignite.seen-cursor.${userId}`;
+function readReceiptStorageKey(userId: string) {
+  return `ignite.readReceipts.${userId}`;
 }
 
-function readStoredRecord<T extends Record<string, unknown>>(key: string): T {
-  if (typeof window === "undefined") return {} as T;
+function readStoredUnreadMap(userId: string): Record<string, number> {
+  if (typeof window === "undefined") return {};
   try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return {} as T;
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? (parsed as T) : ({} as T);
+    const raw = window.localStorage.getItem(unreadStorageKey(userId));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(parsed).map(([key, value]) => [key, typeof value === "number" ? Math.max(0, value) : 0]),
+    );
   } catch {
-    return {} as T;
+    return {};
   }
 }
 
-function writeStoredRecord(key: string, value: Record<string, unknown>) {
+function writeStoredUnreadMap(userId: string, value: Record<string, number>) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(key, JSON.stringify(value));
+    window.localStorage.setItem(unreadStorageKey(userId), JSON.stringify(value));
+  } catch {}
+}
+
+function readStoredReadReceipts(userId: string): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(readReceiptStorageKey(userId));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, value]) => typeof value === "string"),
+    ) as Record<string, string>;
   } catch {
-    // ignore storage quota / privacy mode errors
+    return {};
   }
+}
+
+function writeStoredReadReceipts(userId: string, value: Record<string, string>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(readReceiptStorageKey(userId), JSON.stringify(value));
+  } catch {}
 }
 
 function mergeUnreadIntoChats(items: Chat[], unreadMap: Record<string, number>): Chat[] {
   return items.map((chat) => ({
     ...chat,
-    unread: Math.max(0, unreadMap[chat.id] ?? chat.unread ?? 0),
+    unread: Math.max(
+      typeof chat.unread === "number" ? chat.unread : 0,
+      unreadMap[chat.id] ?? 0,
+    ),
   }));
 }
 
@@ -246,20 +281,6 @@ function maxIsoTimestamp(left: string | null | undefined, right: string | null |
   if (!left) return right ?? null;
   if (!right) return left;
   return new Date(left).getTime() >= new Date(right).getTime() ? left : right;
-}
-
-function mergeSeenCursor(
-  current: Record<string, string>,
-  conversationId: string,
-  candidate: string | null | undefined,
-): Record<string, string> {
-  if (!candidate) return current;
-  const nextValue = maxIsoTimestamp(current[conversationId], candidate);
-  if (!nextValue || nextValue === current[conversationId]) return current;
-  return {
-    ...current,
-    [conversationId]: nextValue,
-  };
 }
 
 
@@ -313,7 +334,7 @@ export default function App() {
   const [myProfilePageOpen, setMyProfilePageOpen] = useState(false);
   const [editingMyProfile, setEditingMyProfile] = useState(false);
   const [presenceState, setPresenceState] = useState<PresenceStateMap>({});
-  const [seenCursorByChat, setSeenCursorByChat] = useState<Record<string, string>>({});
+  const [readReceipts, setReadReceipts] = useState<Record<string, string>>({});
   const [myProfileDraft, setMyProfileDraft] = useState<EditableAuthProfile>({
     name: "",
     username: "",
@@ -331,39 +352,7 @@ export default function App() {
   const mobileEmptyStatePromptShownRef = useRef(false);
   const unreadCountRef = useRef<Record<string, number>>({});
   const chatsRef = useRef<Chat[]>([]);
-  const seenCursorRef = useRef<Record<string, string>>({});
-
-  const persistUnreadMap = React.useCallback((userId: string, unreadMap: Record<string, number>) => {
-    writeStoredRecord(unreadStorageKey(userId), unreadMap);
-  }, []);
-
-  const persistSeenCursorMap = React.useCallback((userId: string, nextSeenMap: Record<string, string>) => {
-    writeStoredRecord(seenCursorStorageKey(userId), nextSeenMap);
-  }, []);
-
-  const updateSeenCursor = React.useCallback(
-    (conversationId: string, candidate: string | null | undefined) => {
-      if (!currentProfile?.id || !candidate) return;
-
-      setSeenCursorByChat((prev) => {
-        const next = mergeSeenCursor(prev, conversationId, candidate);
-        if (next !== prev) {
-          seenCursorRef.current = next;
-          persistSeenCursorMap(currentProfile.id, next);
-        }
-        return next;
-      });
-    },
-    [currentProfile?.id, persistSeenCursorMap],
-  );
-
-  useEffect(() => {
-    chatsRef.current = chats;
-  }, [chats]);
-
-  useEffect(() => {
-    seenCursorRef.current = seenCursorByChat;
-  }, [seenCursorByChat]);
+  const sendReadReceiptRef = useRef<((readAt: string) => Promise<void>) | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -441,7 +430,20 @@ export default function App() {
 
   useEffect(() => {
     chatsRef.current = chats;
-  }, [chats]);
+
+    if (!currentProfile?.id) return;
+
+    const unreadMap = Object.fromEntries(
+      chats.map((chat) => [chat.id, typeof chat.unread === "number" ? chat.unread : 0]),
+    );
+    unreadCountRef.current = unreadMap;
+    writeStoredUnreadMap(currentProfile.id, unreadMap);
+  }, [chats, currentProfile?.id]);
+
+  useEffect(() => {
+    if (!currentProfile?.id) return;
+    writeStoredReadReceipts(currentProfile.id, readReceipts);
+  }, [currentProfile?.id, readReceipts]);
 
   useEffect(() => {
     if (
@@ -547,25 +549,20 @@ export default function App() {
 
         if (!mounted) return;
 
-        const storedUnread = readStoredRecord<Record<string, number>>(
-          unreadStorageKey(nextCurrentProfile.id),
-        );
-        const storedSeenCursor = readStoredRecord<Record<string, string>>(
-          seenCursorStorageKey(nextCurrentProfile.id),
-        );
+        const storedUnread = readStoredUnreadMap(nextCurrentProfile.id);
+        const storedReadReceipts = readStoredReadReceipts(nextCurrentProfile.id);
         const mergedChats = mergeUnreadIntoChats(nextChats, storedUnread);
 
         setCurrentProfile(nextCurrentProfile);
         setUsers(nextUsers);
+        setReadReceipts(storedReadReceipts);
         unreadCountRef.current = Object.fromEntries(
           mergedChats.map((chat) => [chat.id, typeof chat.unread === "number" ? chat.unread : 0]),
         );
-        seenCursorRef.current = storedSeenCursor;
-        setSeenCursorByChat(storedSeenCursor);
         setChats(mergedChats);
         setActiveChatId((prev) => {
-          if (prev && nextChats.some((chat) => chat.id === prev)) return prev;
-          return nextChats[0]?.id ?? null;
+          if (prev && mergedChats.some((chat) => chat.id === prev)) return prev;
+          return mergedChats[0]?.id ?? null;
         });
       } catch (err: unknown) {
         if (!mounted) return;
@@ -592,10 +589,6 @@ export default function App() {
     const currentUserId = currentProfile.id;
     let active = true;
 
-    const persistCurrentUnread = () => {
-      persistUnreadMap(currentUserId, unreadCountRef.current);
-    };
-
     const applyChatListEvent = async (event: ChatListRealtimeEvent) => {
       if (!active) return;
 
@@ -604,23 +597,30 @@ export default function App() {
           const nextChat = await fetchChatById(client, currentUserId, event.conversationId);
           if (!active || !nextChat) return;
 
-          const preservedUnread = unreadCountRef.current[event.conversationId] ?? nextChat.unread ?? 0;
+          const preservedUnread = Math.max(
+            unreadCountRef.current[event.conversationId] ?? 0,
+            typeof nextChat.unread === "number" ? nextChat.unread : 0,
+          );
           unreadCountRef.current[event.conversationId] = preservedUnread;
-          persistCurrentUnread();
 
-          setChats((prev) =>
-            upsertChat(prev, {
+          setChats((prev) => {
+            const nextItems = upsertChat(prev, {
               ...nextChat,
               unread: preservedUnread,
-            }),
-          );
+            });
+            chatsRef.current = nextItems;
+            return nextItems;
+          });
           return;
         }
 
         if (event.kind === "participant_delete") {
           delete unreadCountRef.current[event.conversationId];
-          persistCurrentUnread();
-          setChats((prev) => prev.filter((chat) => chat.id !== event.conversationId));
+          setChats((prev) => {
+            const nextItems = prev.filter((chat) => chat.id !== event.conversationId);
+            chatsRef.current = nextItems;
+            return nextItems;
+          });
           setActiveChatId((prev) => (prev === event.conversationId ? null : prev));
           return;
         }
@@ -637,37 +637,37 @@ export default function App() {
                 : currentUnread;
 
           unreadCountRef.current[event.conversationId] = nextUnread;
-          persistCurrentUnread();
 
           const chatExists = chatsRef.current.some((chat) => chat.id === event.conversationId);
 
           setChats((prev) => {
-            const patched = patchChatPreview(
+            const nextItems = patchChatPreview(
               prev,
               event.conversationId,
               event.preview,
               event.createdAt,
-              { unreadValue: nextUnread },
+              {
+                unreadValue: nextUnread,
+              },
             );
-            if (patched !== prev) {
-              return patched;
-            }
-            return prev;
+            chatsRef.current = nextItems;
+            return nextItems;
           });
 
           if (!chatExists) {
             const nextChat = await fetchChatById(client, currentUserId, event.conversationId);
             if (!active || !nextChat) return;
-            setChats((prev) =>
-              upsertChat(prev, {
+            setChats((prev) => {
+              const nextItems = upsertChat(prev, {
                 ...nextChat,
-                unread: unreadCountRef.current[event.conversationId] ?? nextUnread,
+                unread: nextUnread,
                 preview: event.preview,
                 updatedAt: event.createdAt,
-              }),
-            );
+              });
+              chatsRef.current = nextItems;
+              return nextItems;
+            });
           }
-
           return;
         }
 
@@ -685,11 +685,13 @@ export default function App() {
             const existing = prev.find((chat) => chat.id === event.conversationId);
             if (!existing) return prev;
 
-            return upsertChat(prev, {
+            const nextItems = upsertChat(prev, {
               ...existing,
               preview: event.preview?.trim() || existing.preview,
               updatedAt: event.updatedAt || existing.updatedAt,
             });
+            chatsRef.current = nextItems;
+            return nextItems;
           });
         }
       } catch (error) {
@@ -705,7 +707,7 @@ export default function App() {
       active = false;
       unsubscribe();
     };
-  }, [activeChatId, authClient, currentProfile?.id, isAuthenticated, persistUnreadMap]);
+  }, [activeChatId, authClient, currentProfile?.id, isAuthenticated]);
 
 
   useEffect(() => {
@@ -731,13 +733,14 @@ export default function App() {
         setCurrentProfile((prev) => (prev ? patchPresence(prev, nextPresence) : prev));
         setUsers((prev) => prev.map((profile) => patchPresence(profile, nextPresence)));
 
-        for (const [userId, state] of Object.entries(nextPresence)) {
-          if (!state.activeChatId || !state.lastReadAt) continue;
-          const matchingChat = chatsRef.current.find(
-            (chat) => chat.id === state.activeChatId && chat.peerId === userId,
-          );
-          if (matchingChat) {
-            updateSeenCursor(matchingChat.id, state.lastReadAt);
+        if (activeChatId) {
+          const peerId = chatsRef.current.find((chat) => chat.id === activeChatId)?.peerId ?? null;
+          const peerReadAt = peerId ? nextPresence[peerId]?.lastReadAt ?? null : null;
+          if (peerReadAt) {
+            setReadReceipts((prev) => ({
+              ...prev,
+              [activeChatId]: maxIsoTimestamp(prev[activeChatId], peerReadAt) ?? peerReadAt,
+            }));
           }
         }
       },
@@ -746,13 +749,13 @@ export default function App() {
     return () => {
       unsubscribe();
     };
-  }, [activeChatId, authClient, currentProfile?.id, isAuthenticated, messages, updateSeenCursor]);
-
+  }, [activeChatId, authClient, currentProfile?.id, isAuthenticated, messages]);
 
   useEffect(() => {
     if (!isAuthenticated || !authClient || !activeChatId || !currentProfile?.id) {
       setMessages([]);
       setLoadingMessages(false);
+      sendReadReceiptRef.current = null;
       return;
     }
 
@@ -766,9 +769,7 @@ export default function App() {
       try {
         const nextMessages = await fetchMessages(client, activeChatId);
         if (!active) return;
-
         unreadCountRef.current[activeChatId] = 0;
-        persistUnreadMap(currentUserId, unreadCountRef.current);
         setMessages(nextMessages);
         setChats((prev) => resetChatUnread(prev, activeChatId));
       } catch (err: unknown) {
@@ -783,15 +784,37 @@ export default function App() {
 
     void loadConversation();
 
-    const unsubscribe = subscribeToConversation(client, activeChatId, () => {
-      void loadConversation();
+    const subscription = subscribeToConversation(client, activeChatId, currentUserId, {
+      onDatabaseChange: () => {
+        void loadConversation();
+      },
+      onReadReceipt: ({ readAt }) => {
+        setReadReceipts((prev) => ({
+          ...prev,
+          [activeChatId]: maxIsoTimestamp(prev[activeChatId], readAt) ?? readAt,
+        }));
+      },
     });
+
+    sendReadReceiptRef.current = subscription.sendReadReceipt;
 
     return () => {
       active = false;
-      unsubscribe();
+      sendReadReceiptRef.current = null;
+      subscription.unsubscribe();
     };
-  }, [activeChatId, authClient, currentProfile?.id, isAuthenticated, persistUnreadMap]);
+  }, [activeChatId, authClient, currentProfile?.id, isAuthenticated]);
+
+  useEffect(() => {
+    if (!activeChatId || !currentProfile?.id || !sendReadReceiptRef.current) return;
+
+    const latestVisibleMessage = [...messages]
+      .filter((message) => message.chatId === activeChatId)
+      .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())[0];
+
+    const readAt = latestVisibleMessage?.createdAt ?? new Date().toISOString();
+    void sendReadReceiptRef.current(readAt);
+  }, [activeChatId, currentProfile?.id, messages]);
 
 
   const filteredChats = useMemo(() => {
@@ -863,21 +886,20 @@ export default function App() {
     }
 
     const peerId = activeChat?.peerId ?? null;
-    const liveSeenCursor =
-      peerId && presenceState[peerId]?.activeChatId === activeChatId
-        ? presenceState[peerId]?.lastReadAt ?? null
-        : null;
-    const effectiveSeenCursor = maxIsoTimestamp(
-      seenCursorByChat[activeChatId] ?? null,
-      liveSeenCursor,
-    );
+    const peerOnline = peerId ? Boolean(presenceState[peerId]?.online) : false;
+    const peerViewingChat = peerId ? presenceState[peerId]?.activeChatId === activeChatId : false;
+    const peerPresenceReadAt = peerId ? presenceState[peerId]?.lastReadAt ?? null : null;
+    const peerRealtimeReadAt = readReceipts[activeChatId] ?? null;
+    const peerLastReadAt = maxIsoTimestamp(peerPresenceReadAt, peerRealtimeReadAt);
 
     return decorateMessagesWithDeliveryState(
       baseMessages,
       currentProfile.id,
-      effectiveSeenCursor,
+      peerOnline,
+      peerViewingChat,
+      peerLastReadAt,
     );
-  }, [activeChat?.peerId, activeChatId, currentProfile?.id, messages, presenceState, seenCursorByChat]);
+  }, [activeChat?.peerId, activeChatId, currentProfile?.id, messages, presenceState, readReceipts]);
 
   const replyPreview = useMemo(
     () => findMessageById(activeMessages, replyTo || undefined),
@@ -973,8 +995,6 @@ export default function App() {
 
     setSending(true);
     setError(null);
-    unreadCountRef.current[activeChat.id] = 0;
-    persistUnreadMap(currentProfile.id, unreadCountRef.current);
     setMessages((prev) => [...prev, optimisticMessage]);
     setChats((prev) =>
       patchChatPreview(prev, activeChat.id, preview, optimisticMessage.createdAt, {
@@ -1044,7 +1064,6 @@ export default function App() {
       const nextChat = await fetchChatById(client, currentProfile.id, chatId);
       if (nextChat) {
         unreadCountRef.current[chatId] = 0;
-        persistUnreadMap(currentProfile.id, unreadCountRef.current);
         setChats((prev) =>
           upsertChat(prev, {
             ...nextChat,
@@ -1091,10 +1110,7 @@ export default function App() {
   }
 
   function selectChat(chatId: string) {
-    if (currentProfile?.id) {
-      unreadCountRef.current[chatId] = 0;
-      persistUnreadMap(currentProfile.id, unreadCountRef.current);
-    }
+    unreadCountRef.current[chatId] = 0;
     setActiveChatId(chatId);
     setChats((prev) => resetChatUnread(prev, chatId));
     setReplyTo(null);
