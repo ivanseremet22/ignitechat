@@ -196,9 +196,11 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
         style={{ height: Math.min(pullDistance, 120) }}
       >
         <motion.div 
+          animate={{ 
+            scale: pullDistance > 90 ? [1, 1.2, 1] : Math.min(pullDistance / 70, 1)
+          }}
           style={{ 
             opacity: Math.min(pullDistance / 60, 1),
-            scale: pullDistance > 90 ? [1, 1.2, 1] : Math.min(pullDistance / 70, 1),
             rotate: pullDistance * 3
           }}
           transition={pullDistance > 90 ? { duration: 0.2 } : {}}
