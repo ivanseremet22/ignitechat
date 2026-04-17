@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, useScroll, useTransform, useSpring, useMotionValueEvent, AnimatePresence } from "framer-motion";
-import { X, MoreHorizontal, Check, Camera, PencilLine, Save, HelpCircle, LogOut, Settings, User as UserIcon, Flame, Bell, Share2, Grid, Image as ImageIcon, Layout, Download, Hash, Calendar, MapPin } from "lucide-react";
+import { X, MoreHorizontal, Check, Camera, PencilLine, Save, HelpCircle, LogOut, Settings, User as UserIcon, Flame, Bell, Share2, Grid, Image as ImageIcon, Layout, Download, Hash, Calendar, MapPin, Heart, MessageCircle, Send } from "lucide-react";
 import { UserProfile, ProfileDraft, Post } from "../../chat-types";
 
 type ProfileViewProps = {
@@ -329,27 +329,27 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onUpda
           {/* Content Area */}
           <div className="mt-10 space-y-6">
              {/* Create Post UI */}
-             <div className="rounded-[40px] bg-white/[0.03] border border-white/[0.08] p-6 backdrop-blur-md">
-                <div className="flex items-start gap-4">
-                   <div className="h-12 w-12 rounded-full overflow-hidden border border-white/10 shrink-0">
+             <div className="rounded-[32px] bg-white/[0.03] border border-white/[0.08] p-4 backdrop-blur-md">
+                <div className="flex items-start gap-3">
+                   <div className="h-10 w-10 rounded-full overflow-hidden border border-white/10 shrink-0">
                       <img src={avatarPreview} className="h-full w-full object-cover" />
                    </div>
-                   <div className="flex-1 space-y-4">
+                   <div className="flex-1 space-y-3">
                       <textarea 
                         value={newPostContent}
                         onChange={(e) => setNewPostContent(e.target.value)}
                         placeholder="Что у вас нового?"
-                        className="w-full bg-transparent border-none text-sm font-medium focus:outline-none resize-none min-h-[60px] placeholder:text-white/20"
+                        className="w-full bg-transparent border-none text-sm font-medium focus:outline-none resize-none min-h-[40px] pt-2 placeholder:text-white/20"
                       />
                       
                       {newPostImage && (
-                        <div className="relative rounded-[24px] overflow-hidden aspect-video border border-white/10 group">
+                        <div className="relative rounded-[20px] overflow-hidden aspect-video border border-white/10 group">
                            <img src={newPostImage} className="h-full w-full object-cover" />
                            <button 
                              onClick={() => setNewPostImage(null)}
-                             className="absolute top-2 right-2 h-8 w-8 rounded-full bg-black/60 flex items-center justify-center text-white"
+                             className="absolute top-2 right-2 h-7 w-7 rounded-full bg-black/60 flex items-center justify-center text-white"
                            >
-                             <X size={16} />
+                             <X size={14} />
                            </button>
                         </div>
                       )}
@@ -357,15 +357,15 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onUpda
                       <div className="flex items-center justify-between pt-2 border-t border-white/5">
                          <button 
                            onClick={() => postImageInputRef.current?.click()}
-                           className="flex items-center gap-2 text-white/40 hover:text-lime-400 transition-colors"
+                           className="flex items-center gap-2 text-white/30 hover:text-lime-400 transition-colors"
                          >
-                            <ImageIcon size={20} />
+                            <ImageIcon size={18} />
                             <span className="text-[10px] font-bold uppercase tracking-widest">Фото</span>
                          </button>
                          <button 
                            onClick={handleCreatePost}
                            disabled={!newPostContent.trim() && !newPostImage}
-                           className="px-6 py-2.5 bg-lime-400 text-black rounded-full text-[10px] font-black uppercase tracking-widest disabled:opacity-50 disabled:grayscale transition-all active:scale-95"
+                           className="px-5 py-2 bg-lime-400 text-black rounded-full text-[10px] font-black uppercase tracking-widest disabled:opacity-50 disabled:grayscale transition-all active:scale-95"
                          >
                             Опубликовать
                          </button>
@@ -403,6 +403,22 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onUpda
                           />
                         </div>
                       )}
+
+                      {/* Post Interactions */}
+                      <div className="flex items-center gap-6 mt-5 pt-1">
+                        <button className="flex items-center gap-2 text-white/20 hover:text-red-500 transition-colors group">
+                           <Heart size={20} className="group-active:scale-125 transition-transform" />
+                           <span className="text-[11px] font-bold">0</span>
+                        </button>
+                        <button className="flex items-center gap-2 text-white/20 hover:text-blue-400 transition-colors">
+                           <MessageCircle size={20} />
+                           <span className="text-[11px] font-bold">0</span>
+                        </button>
+                        <button className="flex items-center gap-2 text-white/20 hover:text-lime-400 transition-colors">
+                           <Send size={18} />
+                           <span className="text-[11px] font-bold uppercase tracking-widest">Отправить</span>
+                        </button>
+                      </div>
                     </div>
                  </div>
                ))
