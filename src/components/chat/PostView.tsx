@@ -32,6 +32,8 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editPostContent, setEditPostContent] = useState("");
   const [editPostImage, setEditPostImage] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pullDistance, setPullDistance] = useState(0);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -43,6 +45,59 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
     container: containerRef
   });
 
+  const [isPulling, setIsPulling] = useState(false);
+  const startY = useRef(0);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (containerRef.current?.scrollTop === 0) {
+      startY.current = e.touches[0].clientY;
+      setIsPulling(true);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isPulling) return;
+    const currentY = e.touches[0].clientY;
+    const diff = currentY - startY.current;
+    if (diff > 0) {
+      setPullDistance(diff * 0.5); // Resistance
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (pullDistance > 90 && !isRefreshing) {
+      handleRefresh();
+    } else {
+      setPullDistance(0);
+    }
+    setIsPulling(false);
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (containerRef.current?.scrollTop === 0) {
+      startY.current = e.clientY;
+      setIsPulling(true);
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isPulling) return;
+    const currentY = e.clientY;
+    const diff = currentY - startY.current;
+    if (diff > 0) {
+      setPullDistance(diff * 0.5);
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (pullDistance > 90 && !isRefreshing) {
+      handleRefresh();
+    } else {
+      setPullDistance(0);
+    }
+    setIsPulling(false);
+  };
+
   useMotionValueEvent(scrollY, "change", (latest) => {
     if (latest > 100) {
       setShowBottomNav?.(false);
@@ -50,6 +105,15 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
       setShowBottomNav?.(true);
     }
   });
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    setPullDistance(90);
+    // Simulate instant refresh without page reload
+    await new Promise(resolve => setTimeout(resolve, 800));
+    setIsRefreshing(false);
+    setPullDistance(0);
+  };
 
   const smoothScrollY = useSpring(scrollY, {
     stiffness: 100,
@@ -208,6 +272,30 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black font-sans no-scrollbar select-none text-white">
+      {/* Pull to Refresh Indicator */}
+      <div 
+        className="absolute top-0 left-0 right-0 flex justify-center z-[150] pointer-events-none"
+        style={{ height: Math.min(pullDistance, 120) }}
+      >
+        <motion.div 
+          animate={{ 
+            scale: pullDistance > 90 ? [1, 1.2, 1] : Math.min(pullDistance / 70, 1)
+          }}
+          style={{ 
+            opacity: Math.min(pullDistance / 60, 1),
+            rotate: pullDistance * 3
+          }}
+          transition={pullDistance > 90 ? { duration: 0.2 } : {}}
+          className="mt-6 h-9 w-9 rounded-full bg-lime-400 flex items-center justify-center text-black shadow-[0_0_25px_rgba(163,230,53,0.5)] border-2 border-black/10"
+        >
+          {isRefreshing ? (
+            <div className="h-4 w-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <Flame size={18} className={pullDistance > 90 ? "scale-110" : ""} />
+          )}
+        </motion.div>
+      </div>
+
       {/* Sticky Header for scroll */}
       <motion.div 
         style={{ opacity: headerOpacity }}
@@ -220,6 +308,13 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
       <div 
         ref={containerRef}
         className="relative z-20 h-full overflow-y-auto no-scrollbar scroll-smooth"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
       >
         {/* Cover Section */}
         <div className="relative h-64 w-full overflow-hidden bg-[#111]">
