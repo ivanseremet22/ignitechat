@@ -168,7 +168,7 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
             <div className="w-full space-y-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-4xl font-black tracking-tighter uppercase leading-none">
+                  <h2 className="text-4xl font-extrabold tracking-tight uppercase leading-none">
                     {draft.name || myProfile?.name || "БЕЗ ИМЕНИ"}
                   </h2>
                   {!isEditing && (
@@ -183,14 +183,14 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
 
                 {/* Followers/Following Count Row */}
                 {!isEditing && (
-                  <div className="flex items-center gap-4 pt-1">
-                    <div className="flex items-center gap-1">
-                      <span className="text-white font-black text-sm">1.2K</span>
-                      <span className="text-white/40 text-[10px] font-black uppercase tracking-widest">подписчиков</span>
+                  <div className="flex items-center gap-5 pt-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-white font-bold text-sm tracking-tight">1.2K</span>
+                      <span className="text-white/40 text-[11px] font-medium tracking-wide">подписчиков</span>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-white font-black text-sm">480</span>
-                      <span className="text-white/40 text-[10px] font-black uppercase tracking-widest">подписок</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-white font-bold text-sm tracking-tight">480</span>
+                      <span className="text-white/40 text-[11px] font-medium tracking-wide">подписок</span>
                     </div>
                   </div>
                 )}
@@ -252,7 +252,7 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
+                  className={`px-6 py-3 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${
                     isActive ? 'bg-lime-400 text-black shadow-lg shadow-lime-400/20' : 'bg-white/5 text-white/40 border border-white/10 hover:bg-white/10'
                   }`}
                 >
@@ -272,8 +272,8 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
                       <img src={avatarPreview} className="h-full w-full object-cover" />
                     </div>
                     <div>
-                      <p className="text-xs font-black tracking-tight">{draft.name || myProfile?.name}</p>
-                      <p className="text-[10px] text-white/20 font-black uppercase">3 ч. назад</p>
+                      <p className="text-xs font-bold tracking-tight">{draft.name || myProfile?.name}</p>
+                      <p className="text-[10px] text-white/20 font-bold uppercase">3 ч. назад</p>
                     </div>
                   </div>
                   <MoreHorizontal size={18} className="text-white/20" />
@@ -312,16 +312,16 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
             >
               <div className="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-8" />
               <div className="space-y-3">
-                <button className="w-full flex items-center gap-4 p-5 rounded-[24px] bg-white/5 hover:bg-white/10 transition-colors font-black uppercase text-[10px] tracking-widest">
+                <button className="w-full flex items-center gap-4 p-5 rounded-[24px] bg-white/5 hover:bg-white/10 transition-colors font-bold uppercase text-[10px] tracking-widest">
                   <Settings size={20} className="text-lime-400" /> Настройки
                 </button>
-                <button className="w-full flex items-center gap-4 p-5 rounded-[24px] bg-white/5 hover:bg-white/10 transition-colors font-black uppercase text-[10px] tracking-widest">
+                <button className="w-full flex items-center gap-4 p-5 rounded-[24px] bg-white/5 hover:bg-white/10 transition-colors font-bold uppercase text-[10px] tracking-widest">
                   <Share2 size={20} className="text-blue-400" /> Поделиться
                 </button>
                 <div className="h-px bg-white/5 my-4" />
                 <button 
                   onClick={() => onSignOut?.()}
-                  className="w-full flex items-center gap-4 p-5 rounded-[24px] bg-red-500/10 hover:bg-red-500/20 transition-colors font-black uppercase text-[10px] tracking-widest text-red-400"
+                  className="w-full flex items-center gap-4 p-5 rounded-[24px] bg-red-500/10 hover:bg-red-500/20 transition-colors font-bold uppercase text-[10px] tracking-widest text-red-400"
                 >
                   <LogOut size={20} /> Выйти
                 </button>
