@@ -109,7 +109,7 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
   const handleRefresh = async () => {
     setIsRefreshing(true);
     setPullDistance(90);
-    // Simulate instant refresh without page reload
+    // Просто имитируем обновление данных без перезагрузки страницы window.location.reload()
     await new Promise(resolve => setTimeout(resolve, 800));
     setIsRefreshing(false);
     setPullDistance(0);
