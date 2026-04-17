@@ -25,6 +25,7 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onTogg
   const [showCreatePost, setShowCreatePost] = useState(false);
   const [commentingPostId, setCommentingPostId] = useState<string | null>(null);
   const [newCommentText, setNewCommentText] = useState("");
+  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -470,7 +471,8 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onTogg
 
                               {post.comments.length > 0 && (
                                 <div className="space-y-4 pl-11">
-                                  {post.comments.map((comment) => (
+                                  {/* Logic to show either only the last comment or all comments */}
+                                  {(expandedComments.has(post.id) ? post.comments : [post.comments[post.comments.length - 1]]).map((comment) => (
                                     <div key={comment.id} className="flex gap-3">
                                       <div className="h-6 w-6 rounded-full overflow-hidden border border-white/10 shrink-0">
                                         <img src={comment.userAvatar} className="h-full w-full object-cover" />
@@ -484,6 +486,24 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onTogg
                                       </div>
                                     </div>
                                   ))}
+
+                                  {/* Toggle Button for comments */}
+                                  {post.comments.length > 1 && (
+                                    <button 
+                                      onClick={() => {
+                                        const next = new Set(expandedComments);
+                                        if (next.has(post.id)) next.delete(post.id);
+                                        else next.add(post.id);
+                                        setExpandedComments(next);
+                                      }}
+                                      className="text-[10px] font-black uppercase tracking-widest text-white/20 hover:text-lime-400 transition-colors pt-2"
+                                    >
+                                      {expandedComments.has(post.id) 
+                                        ? `Скрыть комментарии` 
+                                        : `Показать все комментарии (${post.comments.length})`
+                                      }
+                                    </button>
+                                  )}
                                 </div>
                               )}
                             </div>
