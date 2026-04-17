@@ -70,21 +70,21 @@ type OnboardingSlide = {
 const slides: OnboardingSlide[] = [
   {
     id: 0,
-    title: "The Art of Shorts",
+    title: "Искусство Shorts",
     description: "Погрузитесь в мир коротких видео и мгновенных сообщений.",
     icon: <MessageCircle size={120} className="text-white" />,
     color: "from-purple-600 to-pink-500",
   },
   {
     id: 1,
-    title: "Winds of Destiny",
+    title: "Ветер Судьбы",
     description: "Откройте для себя новые горизонты общения в реальном времени.",
     icon: <Zap size={120} className="text-white" />,
     color: "from-blue-600 to-cyan-500",
   },
   {
     id: 2,
-    title: "Escape Corpo",
+    title: "Побег из Корпорации",
     description: "Ваша свобода общения под надежной защитой шифрования.",
     icon: <ShieldCheck size={120} className="text-white" />,
     color: "from-emerald-500 to-teal-600",
@@ -201,7 +201,7 @@ export default function AuthPage({
                 animate={{ opacity: 1, x: 0 }}
                 className="mb-6 rounded-full glass-panel px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white/80 backdrop-blur-md"
               >
-                Recommended
+                Рекомендуемое
               </motion.div>
 
               <div className="min-h-[180px] w-full">
@@ -243,7 +243,7 @@ export default function AuthPage({
                   onClick={nextSlide}
                   className="flex-1 h-16 rounded-3xl bg-white text-black font-black text-xl uppercase tracking-tighter flex items-center justify-center shadow-2xl"
                 >
-                  {currentSlide === slides.length - 1 ? "Get Started" : "Next"}
+                  {currentSlide === slides.length - 1 ? "Начать" : "Далее"}
                 </motion.button>
                 
                 {currentSlide > 0 && (
@@ -272,20 +272,20 @@ export default function AuthPage({
                         onClick={() => setMode("register")}
                         className={`flex-1 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${mode === "register" ? "bg-white text-black" : "text-white/40 hover:text-white"}`}
                       >
-                        Sign Up
+                        Регистрация
                       </button>
                       <button 
                         onClick={() => setMode("login")}
                         className={`flex-1 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${mode === "login" ? "bg-white text-black" : "text-white/40 hover:text-white"}`}
                       >
-                        Log In
+                        Вход
                       </button>
                    </div>
 
                    <h2 className="text-3xl font-black tracking-tighter uppercase italic-none mb-2">
-                     {mode === "register" ? "Create Account" : "Welcome Back"}
+                     {mode === "register" ? "Создать аккаунт" : "С возвращением"}
                    </h2>
-                   <p className="text-sm text-white/40">Enter your details to continue</p>
+                   <p className="text-sm text-white/40">Введите ваши данные, чтобы продолжить</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -295,7 +295,7 @@ export default function AuthPage({
                       <input
                         type="text"
                         name="name"
-                        placeholder="Your Name"
+                        placeholder="Ваше имя"
                         value={form.name}
                         onChange={handleChange}
                         required
@@ -310,7 +310,7 @@ export default function AuthPage({
                       <input
                         type="text"
                         name="username"
-                        placeholder="Username"
+                        placeholder="Имя пользователя"
                         value={form.username}
                         onChange={handleChange}
                         required
@@ -324,7 +324,7 @@ export default function AuthPage({
                     <input
                       type="email"
                       name="email"
-                      placeholder="Your e-mail address"
+                      placeholder="Ваш e-mail адрес"
                       value={form.email}
                       onChange={handleChange}
                       required
@@ -337,7 +337,7 @@ export default function AuthPage({
                     <input
                       type="password"
                       name="password"
-                      placeholder="Create password"
+                      placeholder="Создайте пароль"
                       value={form.password}
                       onChange={handleChange}
                       required
@@ -361,12 +361,12 @@ export default function AuthPage({
                     disabled={submitting}
                     className="w-full h-16 rounded-3xl bg-[#7C3AED] text-white font-black text-xl uppercase tracking-tighter flex items-center justify-center shadow-2xl mt-6 disabled:opacity-50"
                   >
-                    {submitting ? "Processing..." : mode === "register" ? "Sign Up" : "Log In"}
+                    {submitting ? "Обработка..." : mode === "register" ? "Регистрация" : "Вход"}
                   </motion.button>
                 </form>
 
                 <div className="mt-8 text-center">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-white/20 mb-6">Social Login</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-white/20 mb-6">Войти через соцсети</p>
                   <div className="flex justify-center gap-4">
                     {['apple', 'facebook', 'google'].map((provider) => (
                       <button key={provider} className="h-14 w-14 rounded-full glass-panel flex items-center justify-center hover:bg-white/10 transition-colors">
@@ -378,16 +378,16 @@ export default function AuthPage({
               </div>
 
               <div className="mt-8 flex justify-center gap-6 text-[10px] font-bold uppercase tracking-widest text-white/20">
-                <button className="hover:text-white transition-colors">Terms</button>
-                <button className="hover:text-white transition-colors">Privacy</button>
-                <button className="hover:text-white transition-colors">Legal</button>
+                <button className="hover:text-white transition-colors">Условия</button>
+                <button className="hover:text-white transition-colors">Конфиденциальность</button>
+                <button className="hover:text-white transition-colors">Юридическая информация</button>
               </div>
 
               <button 
                 onClick={() => setShowAuth(false)}
                 className="mt-8 text-[10px] font-bold uppercase tracking-widest text-white/30 hover:text-white transition-colors flex items-center gap-2 self-center"
               >
-                <ChevronLeft size={14} /> Back to info
+                <ChevronLeft size={14} /> Назад к информации
               </button>
             </motion.div>
           )}

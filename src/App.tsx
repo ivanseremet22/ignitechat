@@ -1469,7 +1469,18 @@ export default function App() {
   ]);
 
   if (authBooting) {
-    return <div className="min-h-[100svh] bg-black" />;
+    return (
+      <div className="flex min-h-[100svh] items-center justify-center bg-black text-white">
+        <div className="flex flex-col items-center">
+          <div className="h-16 w-16 items-center justify-center rounded-[24px] bg-white text-black shadow-2xl flex mb-6 animate-pulse">
+            <Flame className="h-8 w-8" />
+          </div>
+          <div className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">
+            Инициализация...
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!isAuthenticated) {
@@ -1478,7 +1489,18 @@ export default function App() {
 
   if (!currentProfile) {
     if (loadingChats) {
-      return <div className="min-h-[100svh] bg-black" />;
+      return (
+        <div className="flex min-h-[100svh] items-center justify-center bg-black text-white">
+          <div className="flex flex-col items-center">
+            <div className="h-16 w-16 items-center justify-center rounded-[24px] bg-white text-black shadow-2xl flex mb-6 animate-pulse">
+              <Flame className="h-8 w-8" />
+            </div>
+            <div className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">
+              Загрузка профиля...
+            </div>
+          </div>
+        </div>
+      );
     }
     return (
       <div className="flex min-h-[100svh] items-center justify-center bg-black px-4 text-white">
@@ -1486,15 +1508,15 @@ export default function App() {
           <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-[32px] bg-white text-black mx-auto shadow-xl">
              <AlertCircle className="h-8 w-8" />
           </div>
-          <div className="mb-2 text-xl font-black uppercase tracking-tighter">Profile Error</div>
+          <div className="mb-2 text-xl font-black uppercase tracking-tighter">Ошибка профиля</div>
           <div className="mb-8 text-sm font-bold text-white/40 uppercase tracking-widest leading-loose">
-            Session active but profile sync failed.
+            Сессия активна, но синхронизация профиля не удалась.
           </div>
           <button
             onClick={() => void signOutToRegistration()}
             className="w-full h-16 rounded-3xl bg-white text-black font-black text-lg uppercase tracking-tighter shadow-2xl transition hover:scale-105 active:scale-95"
           >
-            Reset Session
+            Сбросить сессию
           </button>
         </div>
       </div>
