@@ -210,10 +210,31 @@ export default function App() {
   const [authProfile, setAuthProfile] = useState<EditableAuthProfile | null>(
     () => (readStoredProfile() as EditableAuthProfile | null),
   );
-  const [authBooting, setAuthBooting] = useState<boolean>(hasSupabaseAuth);
+  const [authBooting, setAuthBooting] = useState<boolean>(false); // Не блокируем интерфейс
   const [authRefreshKey, setAuthRefreshKey] = useState(0);
 
-  const [currentProfile, setCurrentProfile] = useState<UserProfile | null>(null);
+  const [currentProfile, setCurrentProfile] = useState<UserProfile | null>(() => {
+    const profile = readStoredProfile() as EditableAuthProfile | null;
+    if (profile) {
+      return {
+        id: "loading",
+        name: profile.name,
+        username: profile.username,
+        avatar: getInitials(profile.name),
+        online: true,
+        status: profile.statusText || "в сети",
+        bio: profile.bio,
+        phone: profile.phone || "—",
+        location: profile.location || "—",
+        joinedAt: "2024",
+        role: "Member",
+        accent: "from-amber-300 via-orange-200 to-yellow-100",
+        interests: ["Chat"],
+        avatarUrl: profile.avatarDataUrl,
+      };
+    }
+    return null;
+  });
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [chats, setChats] = useState<Chat[]>([]);
@@ -233,7 +254,7 @@ export default function App() {
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [isTouch, setIsTouch] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
-  const [loadingChats, setLoadingChats] = useState(true);
+  const [loadingChats, setLoadingChats] = useState(false); // Не блокируем интерфейс при загрузке чатов
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [creatingChat, setCreatingChat] = useState<string | null>(null);
@@ -1468,39 +1489,13 @@ export default function App() {
     routeChatId,
   ]);
 
-  if (authBooting) {
-    return (
-      <div className="flex min-h-[100svh] items-center justify-center bg-black text-white">
-        <div className="flex flex-col items-center">
-          <div className="h-16 w-16 items-center justify-center rounded-[24px] bg-white text-black shadow-2xl flex mb-6 animate-pulse">
-            <Flame className="h-8 w-8" />
-          </div>
-          <div className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">
-            Инициализация...
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !authProfile) {
     return isAuthRoute ? <AuthPage onComplete={handleAuthComplete} /> : <Navigate to="/auth" replace />;
   }
 
-  if (!currentProfile) {
+  if (!currentProfile && !authProfile) {
     if (loadingChats) {
-      return (
-        <div className="flex min-h-[100svh] items-center justify-center bg-black text-white">
-          <div className="flex flex-col items-center">
-            <div className="h-16 w-16 items-center justify-center rounded-[24px] bg-white text-black shadow-2xl flex mb-6 animate-pulse">
-              <Flame className="h-8 w-8" />
-            </div>
-            <div className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">
-              Загрузка профиля...
-            </div>
-          </div>
-        </div>
-      );
+      return <div className="min-h-[100svh] bg-black" />;
     }
     return (
       <div className="flex min-h-[100svh] items-center justify-center bg-black px-4 text-white">
