@@ -1308,10 +1308,10 @@ export default function App() {
     writeJsonRecord(postsStorageKey(currentProfile.id), { items: nextPosts });
   };
 
-  const handleUpdatePost = (postId: string, newContent: string) => {
+  const handleUpdatePost = (postId: string, newContent: string, newImageUrl?: string) => {
     if (!currentProfile) return;
     const nextPosts = posts.map((post) =>
-      post.id === postId ? { ...post, content: newContent } : post
+      post.id === postId ? { ...post, content: newContent, imageUrl: newImageUrl } : post
     );
     setPosts(nextPosts);
     writeJsonRecord(postsStorageKey(currentProfile.id), { items: nextPosts });

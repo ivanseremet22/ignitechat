@@ -9,7 +9,7 @@ type ProfileViewProps = {
   posts: Post[];
   onAddPost: (content: string, imageUrl?: string) => void;
   onDeletePost: (postId: string) => void;
-  onUpdatePost: (postId: string, content: string) => void;
+  onUpdatePost: (postId: string, content: string, imageUrl?: string) => void;
   onToggleLike: (postId: string) => void;
   onAddComment: (postId: string, content: string) => void;
   onUpdateDraft: (field: keyof ProfileDraft, value: string) => void;
@@ -31,10 +31,12 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
   const [activePostMenu, setActivePostMenu] = useState<string | null>(null);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editPostContent, setEditPostContent] = useState("");
+  const [editPostImage, setEditPostImage] = useState<string | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const postImageInputRef = useRef<HTMLInputElement>(null);
+  const editPostImageInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { scrollY } = useScroll({
@@ -111,6 +113,17 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
       const reader = new FileReader();
       reader.onloadend = () => {
         setNewPostImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleEditPostImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditPostImage(reader.result as string);
       };
       reader.readAsDataURL(file);
     }
@@ -424,6 +437,7 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
                                   onClick={() => {
                                     setEditingPostId(post.id);
                                     setEditPostContent(post.content);
+                                    setEditPostImage(post.imageUrl || null);
                                     setActivePostMenu(null);
                                   }}
                                   className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors text-white/60 hover:text-white"
@@ -449,25 +463,54 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
                     </div>
                     <div className="px-5 pb-5">
                       {editingPostId === post.id ? (
-                        <div className="space-y-3">
+                        <div className="space-y-4">
                           <textarea 
                             value={editPostContent}
                             onChange={(e) => setEditPostContent(e.target.value)}
                             className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm font-medium text-white focus:outline-none focus:border-lime-400 transition-colors resize-none min-h-[100px]"
                           />
+                          
+                          {editPostImage ? (
+                            <div className="relative rounded-[20px] overflow-hidden aspect-video border border-white/10 group">
+                               <img src={editPostImage} className="h-full w-full object-cover" />
+                               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                                  <button 
+                                    onClick={() => editPostImageInputRef.current?.click()}
+                                    className="h-10 w-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition-all"
+                                  >
+                                    <Camera size={18} />
+                                  </button>
+                                  <button 
+                                    onClick={() => setEditPostImage(null)}
+                                    className="h-10 w-10 rounded-full bg-red-500/20 backdrop-blur-md flex items-center justify-center text-red-400 hover:bg-red-500/40 transition-all"
+                                  >
+                                    <Trash2 size={18} />
+                                  </button>
+                               </div>
+                            </div>
+                          ) : (
+                            <button 
+                              onClick={() => editPostImageInputRef.current?.click()}
+                              className="w-full py-6 border-2 border-dashed border-white/5 rounded-[28px] flex flex-col items-center justify-center gap-2 text-white/20 hover:text-white/40 hover:border-white/10 transition-all group"
+                            >
+                               <ImageIcon size={24} className="group-hover:scale-110 transition-transform" />
+                               <span className="text-[10px] font-bold uppercase tracking-widest">Добавить фото</span>
+                            </button>
+                          )}
+
                           <div className="flex gap-2">
                             <button 
                               onClick={() => {
-                                onUpdatePost(post.id, editPostContent);
+                                onUpdatePost(post.id, editPostContent, editPostImage || undefined);
                                 setEditingPostId(null);
                               }}
-                              className="flex-1 py-2 bg-lime-400 text-black rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all"
+                              className="flex-1 py-2.5 bg-lime-400 text-black rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all"
                             >
                               Сохранить
                             </button>
                             <button 
                               onClick={() => setEditingPostId(null)}
-                              className="px-6 py-2 bg-white/5 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all border border-white/5"
+                              className="px-6 py-2.5 bg-white/5 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all border border-white/5"
                             >
                               Отмена
                             </button>
@@ -645,6 +688,7 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
       <input type="file" ref={coverInputRef} className="hidden" accept="image/*" onChange={handleCoverChange} />
       <input type="file" ref={postImageInputRef} className="hidden" accept="image/*" onChange={handlePostImageChange} />
+      <input type="file" ref={editPostImageInputRef} className="hidden" accept="image/*" onChange={handleEditPostImageChange} />
     </div>
   );
 }
