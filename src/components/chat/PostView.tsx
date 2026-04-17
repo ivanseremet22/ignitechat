@@ -142,7 +142,7 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
           {/* Layout: Avatar, then Name & Status directly below */}
           <div className="flex flex-col items-start">
             {/* Overlapping Avatar */}
-            <div className="relative -mt-16 mb-4">
+            <div className="relative -mt-24 mb-4">
               <div 
                 onClick={handlePhotoClick}
                 className={`h-32 w-32 rounded-full border-4 border-black overflow-hidden bg-[#111] shadow-2xl relative ${isEditing ? 'cursor-pointer group' : ''}`}
@@ -181,8 +181,22 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
                   )}
                 </div>
 
+                {/* Followers/Following Count Row */}
+                {!isEditing && (
+                  <div className="flex items-center gap-4 pt-1">
+                    <div className="flex items-center gap-1">
+                      <span className="text-white font-black text-sm">1.2K</span>
+                      <span className="text-white/40 text-[10px] font-black uppercase tracking-widest">подписчиков</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-white font-black text-sm">480</span>
+                      <span className="text-white/40 text-[10px] font-black uppercase tracking-widest">подписок</span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Editable Status Line */}
-                <div className="relative group">
+                <div className="relative group pt-2">
                   {isEditing ? (
                     <div className="flex flex-col gap-4 mt-4">
                       <div className="space-y-1">
@@ -227,18 +241,6 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
                   )}
                 </div>
               </div>
-
-              {/* Stats/Details Row (Only show if not editing or keep minimal) */}
-              {!isEditing && (
-                <div className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
-                  <div className="flex items-center gap-1.5 text-white/40 text-[10px] font-black uppercase tracking-widest bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
-                    <Hash size={12} className="text-lime-400" /> Elevate
-                  </div>
-                  <div className="flex items-center gap-1.5 text-white/40 text-[10px] font-black uppercase tracking-widest bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
-                    <Calendar size={12} className="text-white/40" /> Июнь 2024
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
@@ -283,14 +285,6 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
                       src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&q=80&w=1000" 
                       className="h-full w-full object-cover"
                     />
-                  </div>
-                  <div className="flex items-center gap-4 mt-5">
-                     <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/5 text-[11px] font-bold">
-                        <Bell size={14} className="text-lime-400" /> 12
-                     </div>
-                     <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/5 text-[11px] font-bold">
-                        <Share2 size={14} className="text-blue-400" /> 40
-                     </div>
                   </div>
                 </div>
              </div>
