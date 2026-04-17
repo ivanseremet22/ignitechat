@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, useScroll, useTransform, useSpring, useMotionValueEvent, AnimatePresence } from "framer-motion";
-import { X, MoreHorizontal, Check, Camera, PencilLine, Save, HelpCircle, LogOut, Settings, User as UserIcon, Flame, Bell, Share2, Grid, Image as ImageIcon, Layout, Download, Hash, Calendar, MapPin, Heart, MessageCircle, Send } from "lucide-react";
+import { X, MoreHorizontal, Check, Camera, PencilLine, Save, HelpCircle, LogOut, Settings, User as UserIcon, Flame, Bell, Share2, Grid, Image as ImageIcon, Layout, Download, Hash, Calendar, MapPin, Heart, MessageCircle, Send, Trash2 } from "lucide-react";
 import { UserProfile, ProfileDraft, Post, PostComment } from "../../chat-types";
 
 type ProfileViewProps = {
@@ -8,6 +8,8 @@ type ProfileViewProps = {
   draft: ProfileDraft;
   posts: Post[];
   onAddPost: (content: string, imageUrl?: string) => void;
+  onDeletePost: (postId: string) => void;
+  onUpdatePost: (postId: string, content: string) => void;
   onToggleLike: (postId: string) => void;
   onAddComment: (postId: string, content: string) => void;
   onUpdateDraft: (field: keyof ProfileDraft, value: string) => void;
@@ -16,7 +18,7 @@ type ProfileViewProps = {
   setShowBottomNav?: (show: boolean) => void;
 };
 
-export default function ProfileView({ myProfile, draft, posts, onAddPost, onToggleLike, onAddComment, onUpdateDraft, onSaveProfile, onSignOut, setShowBottomNav }: ProfileViewProps) {
+export default function ProfileView({ myProfile, draft, posts, onAddPost, onDeletePost, onUpdatePost, onToggleLike, onAddComment, onUpdateDraft, onSaveProfile, onSignOut, setShowBottomNav }: ProfileViewProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState("Лента");
   const [showMenu, setShowMenu] = useState(false);
@@ -26,6 +28,9 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onTogg
   const [commentingPostId, setCommentingPostId] = useState<string | null>(null);
   const [newCommentText, setNewCommentText] = useState("");
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
+  const [activePostMenu, setActivePostMenu] = useState<string | null>(null);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [editPostContent, setEditPostContent] = useState("");
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -382,7 +387,7 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onTogg
              {/* Posts List */}
              {posts.length > 0 ? (
                posts.map((post) => (
-                 <div key={post.id} className="rounded-[40px] bg-white/[0.03] border border-white/[0.08] overflow-hidden backdrop-blur-md">
+                 <div key={post.id} className="rounded-[40px] bg-white/[0.03] border border-white/[0.08] overflow-hidden backdrop-blur-md relative">
                     <div className="p-5 flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-full overflow-hidden border border-white/10">
@@ -393,20 +398,96 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onTogg
                           <p className="text-[10px] text-white/20 font-bold uppercase">{formatPostDate(post.createdAt)}</p>
                         </div>
                       </div>
-                      <MoreHorizontal size={18} className="text-white/20" />
+                      
+                      <div className="relative">
+                        <button 
+                          onClick={() => setActivePostMenu(activePostMenu === post.id ? null : post.id)}
+                          className="p-2 hover:bg-white/5 rounded-full transition-colors"
+                        >
+                          <MoreHorizontal size={18} className="text-white/20" />
+                        </button>
+                        
+                        <AnimatePresence>
+                          {activePostMenu === post.id && (
+                            <>
+                              <div 
+                                className="fixed inset-0 z-40" 
+                                onClick={() => setActivePostMenu(null)} 
+                              />
+                              <motion.div 
+                                initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                                className="absolute right-0 mt-2 w-40 bg-[#111] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden"
+                              >
+                                <button 
+                                  onClick={() => {
+                                    setEditingPostId(post.id);
+                                    setEditPostContent(post.content);
+                                    setActivePostMenu(null);
+                                  }}
+                                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors text-white/60 hover:text-white"
+                                >
+                                  <PencilLine size={16} />
+                                  <span className="text-[10px] font-bold uppercase tracking-widest">Изменить</span>
+                                </button>
+                                <button 
+                                  onClick={() => {
+                                    onDeletePost(post.id);
+                                    setActivePostMenu(null);
+                                  }}
+                                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-red-500/10 transition-colors text-red-400/60 hover:text-red-400"
+                                >
+                                  <Trash2 size={16} />
+                                  <span className="text-[10px] font-bold uppercase tracking-widest">Удалить</span>
+                                </button>
+                              </motion.div>
+                            </>
+                          )}
+                        </AnimatePresence>
+                      </div>
                     </div>
                     <div className="px-5 pb-5">
-                      {post.content && (
-                        <p className="text-sm font-medium mb-4 leading-relaxed">{post.content}</p>
-                      )}
-                      {post.imageUrl && (
-                        <div className="rounded-[28px] overflow-hidden aspect-video bg-white/5 border border-white/5">
-                          <img 
-                            src={post.imageUrl} 
-                            className="h-full w-full object-cover"
-                            alt="Post content"
+                      {editingPostId === post.id ? (
+                        <div className="space-y-3">
+                          <textarea 
+                            value={editPostContent}
+                            onChange={(e) => setEditPostContent(e.target.value)}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm font-medium text-white focus:outline-none focus:border-lime-400 transition-colors resize-none min-h-[100px]"
                           />
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => {
+                                onUpdatePost(post.id, editPostContent);
+                                setEditingPostId(null);
+                              }}
+                              className="flex-1 py-2 bg-lime-400 text-black rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all"
+                            >
+                              Сохранить
+                            </button>
+                            <button 
+                              onClick={() => setEditingPostId(null)}
+                              className="px-6 py-2 bg-white/5 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all border border-white/5"
+                            >
+                              Отмена
+                            </button>
+                          </div>
                         </div>
+                      ) : (
+                        <>
+                          {post.content && (
+                            <p className="text-sm font-medium mb-4 leading-relaxed">{post.content}</p>
+                          )}
+                          {post.imageUrl && (
+                            <div className="rounded-[28px] overflow-hidden aspect-video bg-white/5 border border-white/5">
+                              <img 
+                                src={post.imageUrl} 
+                                className="h-full w-full object-cover"
+                                alt="Post content"
+                              />
+                            </div>
+                          )}
+                        </>
                       )}
 
                       {/* Post Interactions */}

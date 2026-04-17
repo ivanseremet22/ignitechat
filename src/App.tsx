@@ -1301,6 +1301,22 @@ export default function App() {
     writeJsonRecord(postsStorageKey(currentProfile.id), { items: nextPosts });
   };
 
+  const handleDeletePost = (postId: string) => {
+    if (!currentProfile) return;
+    const nextPosts = posts.filter((post) => post.id !== postId);
+    setPosts(nextPosts);
+    writeJsonRecord(postsStorageKey(currentProfile.id), { items: nextPosts });
+  };
+
+  const handleUpdatePost = (postId: string, newContent: string) => {
+    if (!currentProfile) return;
+    const nextPosts = posts.map((post) =>
+      post.id === postId ? { ...post, content: newContent } : post
+    );
+    setPosts(nextPosts);
+    writeJsonRecord(postsStorageKey(currentProfile.id), { items: nextPosts });
+  };
+
   function handleProfileAvatarChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1561,6 +1577,8 @@ export default function App() {
                       draft={myProfileDraft}
                       posts={posts}
                       onAddPost={handleAddPost}
+                      onDeletePost={handleDeletePost}
+                      onUpdatePost={handleUpdatePost}
                       onToggleLike={handleToggleLike}
                       onAddComment={handleAddComment}
                       onUpdateDraft={(field, value) => updateMyProfileDraft(field as any, value)}
