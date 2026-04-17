@@ -3,7 +3,7 @@ import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { MessageSquarePlus, Search, UserRound, Video, X, Flame, AlertCircle } from "lucide-react";
 import AuthPage, { type AuthMode, type RegisterPayload, getInitials } from "./AuthPage";
-import type { Chat, EditableAuthProfile, Message, MessageStatus, Post, Reaction, UserProfile } from "./chat-types";
+import type { Chat, EditableAuthProfile, Message, MessageStatus, Post, PostComment, Reaction, UserProfile } from "./chat-types";
 import Sidebar from "./components/chat/Sidebar";
 import MyProfilePage from "./components/chat/MyProfilePage";
 import ChatView from "./components/chat/ChatView";
@@ -1256,8 +1256,41 @@ export default function App() {
       content,
       imageUrl,
       createdAt: new Date().toISOString(),
+      likes: [],
+      comments: [],
     };
     setPosts([newPost, ...posts]);
+  };
+
+  const handleToggleLike = (postId: string) => {
+    if (!currentProfile) return;
+    setPosts((prev) =>
+      prev.map((post) => {
+        if (post.id !== postId) return post;
+        const hasLiked = post.likes.includes(currentProfile.id);
+        const nextLikes = hasLiked
+          ? post.likes.filter((id) => id !== currentProfile.id)
+          : [...post.likes, currentProfile.id];
+        return { ...post, likes: nextLikes };
+      })
+    );
+  };
+
+  const handleAddComment = (postId: string, content: string) => {
+    if (!currentProfile || !content.trim()) return;
+    const newComment: PostComment = {
+      id: crypto.randomUUID(),
+      userId: currentProfile.id,
+      userName: authProfile?.name || currentProfile.name,
+      userAvatar: authProfile?.avatarDataUrl || currentProfile.avatarUrl || "",
+      content: content.trim(),
+      createdAt: new Date().toISOString(),
+    };
+    setPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId ? { ...post, comments: [...post.comments, newComment] } : post
+      )
+    );
   };
 
   function handleProfileAvatarChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -1520,6 +1553,8 @@ export default function App() {
                       draft={myProfileDraft}
                       posts={posts}
                       onAddPost={handleAddPost}
+                      onToggleLike={handleToggleLike}
+                      onAddComment={handleAddComment}
                       onUpdateDraft={(field, value) => updateMyProfileDraft(field as any, value)}
                       onSaveProfile={async () => {
                         await saveMyProfile();

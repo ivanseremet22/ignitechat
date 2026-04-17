@@ -70,6 +70,15 @@ export type Chat = {
   avatarUrl?: string;
 };
 
+export type PostComment = {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  content: string;
+  createdAt: string;
+};
+
 export type Post = {
   id: string;
   userId: string;
@@ -78,4 +87,6 @@ export type Post = {
   content: string;
   imageUrl?: string;
   createdAt: string;
+  likes: string[]; // User IDs who liked the post
+  comments: PostComment[];
 };

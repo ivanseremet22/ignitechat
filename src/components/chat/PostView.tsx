@@ -1,26 +1,30 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, useScroll, useTransform, useSpring, useMotionValueEvent, AnimatePresence } from "framer-motion";
 import { X, MoreHorizontal, Check, Camera, PencilLine, Save, HelpCircle, LogOut, Settings, User as UserIcon, Flame, Bell, Share2, Grid, Image as ImageIcon, Layout, Download, Hash, Calendar, MapPin, Heart, MessageCircle, Send } from "lucide-react";
-import { UserProfile, ProfileDraft, Post } from "../../chat-types";
+import { UserProfile, ProfileDraft, Post, PostComment } from "../../chat-types";
 
 type ProfileViewProps = {
   myProfile: UserProfile | null;
   draft: ProfileDraft;
   posts: Post[];
   onAddPost: (content: string, imageUrl?: string) => void;
+  onToggleLike: (postId: string) => void;
+  onAddComment: (postId: string, content: string) => void;
   onUpdateDraft: (field: keyof ProfileDraft, value: string) => void;
   onSaveProfile: () => Promise<void>;
   onSignOut?: () => void;
   setShowBottomNav?: (show: boolean) => void;
 };
 
-export default function ProfileView({ myProfile, draft, posts, onAddPost, onUpdateDraft, onSaveProfile, onSignOut, setShowBottomNav }: ProfileViewProps) {
+export default function ProfileView({ myProfile, draft, posts, onAddPost, onToggleLike, onAddComment, onUpdateDraft, onSaveProfile, onSignOut, setShowBottomNav }: ProfileViewProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState("Лента");
   const [showMenu, setShowMenu] = useState(false);
   const [newPostContent, setNewPostContent] = useState("");
   const [newPostImage, setNewPostImage] = useState<string | null>(null);
   const [showCreatePost, setShowCreatePost] = useState(false);
+  const [commentingPostId, setCommentingPostId] = useState<string | null>(null);
+  const [newCommentText, setNewCommentText] = useState("");
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -406,19 +410,86 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onUpda
 
                       {/* Post Interactions */}
                       <div className="flex items-center gap-6 mt-5 pt-1">
-                        <button className="flex items-center gap-2 text-white/20 hover:text-red-500 transition-colors group">
-                           <Heart size={20} className="group-active:scale-125 transition-transform" />
-                           <span className="text-[11px] font-bold">0</span>
+                        <button 
+                          onClick={() => onToggleLike(post.id)}
+                          className={`flex items-center gap-2 transition-colors group ${post.likes.includes(myProfile?.id || "") ? "text-red-500" : "text-white/20 hover:text-red-500"}`}
+                        >
+                           <Heart size={20} className={`${post.likes.includes(myProfile?.id || "") ? "fill-current scale-110" : "group-active:scale-125"} transition-transform`} />
+                           <span className="text-[11px] font-bold">{post.likes.length}</span>
                         </button>
-                        <button className="flex items-center gap-2 text-white/20 hover:text-blue-400 transition-colors">
+                        <button 
+                          onClick={() => setCommentingPostId(commentingPostId === post.id ? null : post.id)}
+                          className={`flex items-center gap-2 transition-colors ${commentingPostId === post.id ? "text-blue-400" : "text-white/20 hover:text-blue-400"}`}
+                        >
                            <MessageCircle size={20} />
-                           <span className="text-[11px] font-bold">0</span>
+                           <span className="text-[11px] font-bold">{post.comments.length}</span>
                         </button>
                         <button className="flex items-center gap-2 text-white/20 hover:text-lime-400 transition-colors">
                            <Send size={18} />
-                           <span className="text-[11px] font-bold uppercase tracking-widest">Отправить</span>
                         </button>
                       </div>
+
+                      {/* Comments Section */}
+                      <AnimatePresence>
+                        {commentingPostId === post.id && (
+                          <motion.div 
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="pt-6 space-y-4">
+                              <div className="flex gap-3">
+                                <div className="h-8 w-8 rounded-full overflow-hidden border border-white/10 shrink-0">
+                                  <img src={avatarPreview} className="h-full w-full object-cover" />
+                                </div>
+                                <div className="flex-1 flex gap-2">
+                                  <input 
+                                    value={newCommentText}
+                                    onChange={(e) => setNewCommentText(e.target.value)}
+                                    placeholder="Оставьте комментарий..."
+                                    className="flex-1 bg-white/5 border border-white/5 rounded-xl px-4 py-2 text-xs font-medium focus:outline-none focus:border-white/10"
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        onAddComment(post.id, newCommentText);
+                                        setNewCommentText("");
+                                      }
+                                    }}
+                                  />
+                                  <button 
+                                    onClick={() => {
+                                      onAddComment(post.id, newCommentText);
+                                      setNewCommentText("");
+                                    }}
+                                    className="px-4 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-bold uppercase transition-colors"
+                                  >
+                                    OK
+                                  </button>
+                                </div>
+                              </div>
+
+                              {post.comments.length > 0 && (
+                                <div className="space-y-4 pl-11">
+                                  {post.comments.map((comment) => (
+                                    <div key={comment.id} className="flex gap-3">
+                                      <div className="h-6 w-6 rounded-full overflow-hidden border border-white/10 shrink-0">
+                                        <img src={comment.userAvatar} className="h-full w-full object-cover" />
+                                      </div>
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[10px] font-bold text-white/40">{comment.userName}</span>
+                                          <span className="text-[8px] font-medium text-white/10 uppercase">{formatPostDate(comment.createdAt)}</span>
+                                        </div>
+                                        <p className="text-[11px] font-medium text-white/70 leading-relaxed">{comment.content}</p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                  </div>
                ))
