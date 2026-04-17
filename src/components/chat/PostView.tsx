@@ -135,7 +135,7 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
           {isEditing && (
             <button 
               onClick={() => coverInputRef.current?.click()}
-              className="absolute inset-0 flex items-center justify-center bg-black/40 text-white backdrop-blur-[2px] hover:bg-black/50 transition-all group z-30"
+              className="absolute inset-0 flex items-center justify-center bg-black/40 text-white backdrop-blur-[2px] hover:bg-black/50 transition-all group z-[30] pb-12"
             >
               <div className="flex flex-col items-center gap-2">
                 <Camera size={32} className="group-hover:scale-110 transition-transform" />
@@ -164,12 +164,15 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
         {/* Profile Info Section */}
         <div className="relative px-6 pb-32 bg-black">
           {/* Layout: Avatar, then Name & Status directly below */}
-          <div className="flex flex-col items-start">
+          <div className="flex flex-col items-start relative z-50">
             {/* Overlapping Avatar */}
             <div className="relative -mt-24 mb-4">
               <div 
-                onClick={handlePhotoClick}
-                className={`h-32 w-32 rounded-full border-4 border-black overflow-hidden bg-[#111] shadow-2xl relative ${isEditing ? 'cursor-pointer group' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePhotoClick();
+                }}
+                className={`h-32 w-32 rounded-full border-4 border-black overflow-hidden bg-[#111] shadow-2xl relative ${isEditing ? 'cursor-pointer group z-50' : ''}`}
               >
                 <img 
                   src={avatarPreview} 
