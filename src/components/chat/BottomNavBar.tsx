@@ -28,7 +28,7 @@ export default function BottomNavBar({ activeTab, setActiveTab, unreadCount }: B
               {activeTab === tab.id && (
                 <motion.div
                   layoutId="nav-indicator-new"
-                  className="h-9 w-9 bg-lime-400 rounded-[16px] shadow-[0_0_20px_rgba(163,230,53,0.3)]"
+                  className="h-9 w-9 bg-lime-400/20 backdrop-blur-md border border-lime-400/30 rounded-[16px] shadow-[0_0_20px_rgba(163,230,53,0.2)]"
                   transition={{ type: "spring", stiffness: 400, damping: 30 }}
                 />
               )}
@@ -49,7 +49,7 @@ export default function BottomNavBar({ activeTab, setActiveTab, unreadCount }: B
               <div className="relative flex items-center justify-center">
                 <Icon className={`h-[18px] w-[22px] transition-all duration-300 ${
                   isActive 
-                    ? "text-black scale-100" 
+                    ? "text-lime-400 scale-100" 
                     : "text-white/25 group-hover:text-white/50"
                 }`} />
                 {tab.hasBadge && (

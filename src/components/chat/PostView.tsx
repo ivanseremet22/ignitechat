@@ -294,7 +294,7 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
             rotate: pullDistance * 3
           }}
           transition={pullDistance > 90 ? { duration: 0.2 } : {}}
-          className="mt-6 h-9 w-9 rounded-full bg-lime-400 flex items-center justify-center text-black shadow-[0_0_25px_rgba(163,230,53,0.5)] border-2 border-black/10"
+          className="mt-6 h-9 w-9 rounded-full bg-lime-400/20 backdrop-blur-md flex items-center justify-center text-lime-400 shadow-[0_0_25px_rgba(163,230,53,0.2)] border-2 border-lime-400/30"
         >
           {isRefreshing ? (
             <div className="h-4 w-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
@@ -355,7 +355,7 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
           <div className="absolute top-10 right-6 flex items-center gap-2 z-40">
             <button 
               onClick={() => setIsEditing(!isEditing)}
-              className={`h-9 w-9 rounded-full ${isEditing ? 'bg-lime-400 text-black' : 'bg-black/40 text-white'} backdrop-blur-md border border-white/10 flex items-center justify-center hover:opacity-90 transition-all`}
+              className={`h-9 w-9 rounded-full ${isEditing ? 'bg-lime-400/20 text-lime-400 border-lime-400/30' : 'bg-black/40 text-white border-white/10'} backdrop-blur-md border flex items-center justify-center hover:opacity-90 transition-all`}
             >
               {isEditing ? <Check size={18} /> : <PencilLine size={18} />}
             </button>
@@ -461,9 +461,9 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
                       </div>
                       <div className="flex gap-2">
                         <button 
-                          onClick={handleSave}
-                          className="flex-1 h-12 bg-lime-400 text-black font-black rounded-2xl shadow-[0_0_20px_rgba(163,230,53,0.3)] active:scale-95 transition-all uppercase text-xs"
-                        >
+                              onClick={handleSave}
+                              className="flex-1 h-12 bg-lime-400/20 text-lime-400 border border-lime-400/30 backdrop-blur-md font-black rounded-2xl shadow-[0_0_20px_rgba(163,230,53,0.1)] active:scale-95 transition-all uppercase text-xs"
+                            >
                           Сохранить
                         </button>
                         <button 
@@ -495,7 +495,7 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`px-6 py-3 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${
-                    isActive ? 'bg-lime-400 text-black shadow-lg shadow-lime-400/20' : 'bg-white/5 text-white/40 border border-white/10 hover:bg-white/10'
+                    isActive ? 'bg-lime-400/20 text-lime-400 border border-lime-400/30 backdrop-blur-md shadow-lg shadow-lime-400/10' : 'bg-white/5 text-white/40 border border-white/10 hover:bg-white/10'
                   }`}
                 >
                   {tab.id}
@@ -543,7 +543,7 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
                          <button 
                            onClick={handleCreatePost}
                            disabled={!newPostContent.trim() && !newPostImage}
-                           className="px-5 py-2 bg-lime-400 text-black rounded-full text-[10px] font-black uppercase tracking-widest disabled:opacity-50 disabled:grayscale transition-all active:scale-95"
+                           className="px-5 py-2 bg-lime-400/20 text-lime-400 border border-lime-400/30 backdrop-blur-md rounded-full text-[10px] font-black uppercase tracking-widest disabled:opacity-50 disabled:grayscale transition-all active:scale-95"
                          >
                             Опубликовать
                          </button>
@@ -629,7 +629,7 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
                                 onUpdatePost(post.id, editPostContent, editPostImage || undefined);
                                 setEditingPostId(null);
                               }}
-                              className="flex-1 py-2.5 bg-lime-400 text-black rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all"
+                              className="flex-1 py-2.5 bg-lime-400/20 text-lime-400 border border-lime-400/30 backdrop-blur-md rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all"
                             >
                               Сохранить
                             </button>
