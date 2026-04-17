@@ -32,6 +32,8 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editPostContent, setEditPostContent] = useState("");
   const [editPostImage, setEditPostImage] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pullDistance, setPullDistance] = useState(0);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -49,7 +51,27 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
     } else {
       setShowBottomNav?.(true);
     }
+    
+    // Track pull to refresh when at the top
+    if (latest < 0) {
+      setPullDistance(Math.abs(latest));
+    } else {
+      setPullDistance(0);
+    }
   });
+
+  useEffect(() => {
+    if (pullDistance > 120 && !isRefreshing) {
+      handleRefresh();
+    }
+  }, [pullDistance]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    // Visual delay for the feel of refreshing
+    await new Promise(resolve => setTimeout(resolve, 800));
+    window.location.reload();
+  };
 
   const smoothScrollY = useSpring(scrollY, {
     stiffness: 100,
@@ -168,6 +190,27 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black font-sans no-scrollbar select-none text-white">
+      {/* Pull to Refresh Indicator */}
+      <div 
+        className="absolute top-0 left-0 right-0 flex justify-center z-[150] pointer-events-none"
+        style={{ height: Math.min(pullDistance, 150) }}
+      >
+        <motion.div 
+          style={{ 
+            opacity: Math.min(pullDistance / 80, 1),
+            scale: Math.min(pullDistance / 100, 1),
+            rotate: pullDistance * 2
+          }}
+          className="mt-8 h-10 w-10 rounded-full bg-lime-400 flex items-center justify-center text-black shadow-[0_0_20px_rgba(163,230,53,0.4)]"
+        >
+          {isRefreshing ? (
+            <div className="h-5 w-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <Flame size={20} className={pullDistance > 120 ? "scale-125" : ""} />
+          )}
+        </motion.div>
+      </div>
+
       {/* Sticky Header for scroll */}
       <motion.div 
         style={{ opacity: headerOpacity }}
