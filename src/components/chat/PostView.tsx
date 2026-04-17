@@ -259,12 +259,24 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
             >
               {isEditing ? <Check size={18} /> : <PencilLine size={18} />}
             </button>
-            <button 
-              onClick={() => setShowMenu(!showMenu)}
-              className="h-9 w-9 rounded-full bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center hover:bg-black/60 transition-colors"
-            >
-              <MoreHorizontal size={18} />
-            </button>
+            
+            {/* Direct Action Buttons instead of Menu */}
+            {!isEditing && (
+              <>
+                <button className="h-9 w-9 rounded-full bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-black/60 transition-colors">
+                  <Settings size={18} />
+                </button>
+                <button className="h-9 w-9 rounded-full bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-black/60 transition-colors">
+                  <Share2 size={18} />
+                </button>
+                <button 
+                  onClick={() => onSignOut?.()}
+                  className="h-9 w-9 rounded-full bg-red-500/20 backdrop-blur-md border border-red-500/20 flex items-center justify-center text-red-400 hover:bg-red-500/40 transition-all"
+                >
+                  <LogOut size={18} />
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -455,53 +467,23 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
                         </div>
                       </div>
                       
-                      <div className="relative">
+                      <div className="flex items-center gap-1">
                         <button 
-                          onClick={() => setActivePostMenu(activePostMenu === post.id ? null : post.id)}
-                          className="p-2 hover:bg-white/5 rounded-full transition-colors"
+                          onClick={() => {
+                            setEditingPostId(post.id);
+                            setEditPostContent(post.content);
+                            setEditPostImage(post.imageUrl || null);
+                          }}
+                          className="h-8 w-8 rounded-full bg-white/5 flex items-center justify-center text-white/20 hover:text-white hover:bg-white/10 transition-all"
                         >
-                          <MoreHorizontal size={18} className="text-white/20" />
+                          <PencilLine size={14} />
                         </button>
-                        
-                        <AnimatePresence>
-                          {activePostMenu === post.id && (
-                            <>
-                              <div 
-                                className="fixed inset-0 z-40" 
-                                onClick={() => setActivePostMenu(null)} 
-                              />
-                              <motion.div 
-                                initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                                className="absolute right-0 mt-2 w-40 bg-[#111] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden"
-                              >
-                                <button 
-                                  onClick={() => {
-                                    setEditingPostId(post.id);
-                                    setEditPostContent(post.content);
-                                    setEditPostImage(post.imageUrl || null);
-                                    setActivePostMenu(null);
-                                  }}
-                                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors text-white/60 hover:text-white"
-                                >
-                                  <PencilLine size={16} />
-                                  <span className="text-[10px] font-bold uppercase tracking-widest">Изменить</span>
-                                </button>
-                                <button 
-                                  onClick={() => {
-                                    onDeletePost(post.id);
-                                    setActivePostMenu(null);
-                                  }}
-                                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-red-500/10 transition-colors text-red-400/60 hover:text-red-400"
-                                >
-                                  <Trash2 size={16} />
-                                  <span className="text-[10px] font-bold uppercase tracking-widest">Удалить</span>
-                                </button>
-                              </motion.div>
-                            </>
-                          )}
-                        </AnimatePresence>
+                        <button 
+                          onClick={() => onDeletePost(post.id)}
+                          className="h-8 w-8 rounded-full bg-white/5 flex items-center justify-center text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
                     <div className="px-5 pb-5">
