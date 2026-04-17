@@ -104,6 +104,10 @@ function unreadStorageKey(userId: string) {
   return `ignitechat:unread:${userId}`;
 }
 
+function postsStorageKey(userId: string) {
+  return `ignitechat:posts:${userId}`;
+}
+
 function readCursorStorageKey(userId: string) {
   return `ignitechat:read-cursor:${userId}`;
 }
@@ -454,6 +458,7 @@ export default function App() {
 
         const savedUnread = readJsonRecord<UnreadMap>(unreadStorageKey(nextCurrentProfile.id));
         const savedReadCursors = readJsonRecord<ReadCursorMap>(readCursorStorageKey(nextCurrentProfile.id));
+        const savedPosts = readJsonRecord<{ items: Post[] }>(postsStorageKey(nextCurrentProfile.id)).items || [];
 
         unreadMapRef.current = savedUnread;
         peerReadCursorRef.current = savedReadCursors;
@@ -473,6 +478,7 @@ export default function App() {
         setCurrentProfile(nextCurrentProfile);
         setUsers(nextUsers);
         setChats(nextChats);
+        setPosts(savedPosts);
         setActiveChatId((prev) => {
           if (prev && nextChats.some((chat) => chat.id === prev)) return prev;
           return nextChats[0]?.id ?? null;
@@ -1259,21 +1265,23 @@ export default function App() {
       likes: [],
       comments: [],
     };
-    setPosts([newPost, ...posts]);
+    const nextPosts = [newPost, ...posts];
+    setPosts(nextPosts);
+    writeJsonRecord(postsStorageKey(currentProfile.id), { items: nextPosts });
   };
 
   const handleToggleLike = (postId: string) => {
     if (!currentProfile) return;
-    setPosts((prev) =>
-      prev.map((post) => {
-        if (post.id !== postId) return post;
-        const hasLiked = post.likes.includes(currentProfile.id);
-        const nextLikes = hasLiked
-          ? post.likes.filter((id) => id !== currentProfile.id)
-          : [...post.likes, currentProfile.id];
-        return { ...post, likes: nextLikes };
-      })
-    );
+    const nextPosts = posts.map((post) => {
+      if (post.id !== postId) return post;
+      const hasLiked = post.likes.includes(currentProfile.id);
+      const nextLikes = hasLiked
+        ? post.likes.filter((id) => id !== currentProfile.id)
+        : [...post.likes, currentProfile.id];
+      return { ...post, likes: nextLikes };
+    });
+    setPosts(nextPosts);
+    writeJsonRecord(postsStorageKey(currentProfile.id), { items: nextPosts });
   };
 
   const handleAddComment = (postId: string, content: string) => {
@@ -1286,11 +1294,11 @@ export default function App() {
       content: content.trim(),
       createdAt: new Date().toISOString(),
     };
-    setPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId ? { ...post, comments: [...post.comments, newComment] } : post
-      )
+    const nextPosts = posts.map((post) =>
+      post.id === postId ? { ...post, comments: [...post.comments, newComment] } : post
     );
+    setPosts(nextPosts);
+    writeJsonRecord(postsStorageKey(currentProfile.id), { items: nextPosts });
   };
 
   function handleProfileAvatarChange(event: React.ChangeEvent<HTMLInputElement>) {
