@@ -128,8 +128,8 @@ function writeJsonRecord(key: string, value: Record<string, unknown>) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // ignore storage errors
+  } catch (e) {
+    console.error(`Error writing to localStorage for key ${key}:`, e);
   }
 }
 
@@ -458,7 +458,11 @@ export default function App() {
 
         const savedUnread = readJsonRecord<UnreadMap>(unreadStorageKey(nextCurrentProfile.id));
         const savedReadCursors = readJsonRecord<ReadCursorMap>(readCursorStorageKey(nextCurrentProfile.id));
-        const savedPosts = readJsonRecord<{ items: Post[] }>(postsStorageKey(nextCurrentProfile.id)).items || [];
+        const savedPostsKey = postsStorageKey(nextCurrentProfile.id);
+        const savedPostsRaw = readJsonRecord<{ items: Post[] }>(savedPostsKey);
+        const savedPosts = savedPostsRaw.items || [];
+        
+        console.log(`Loaded ${savedPosts.length} posts from ${savedPostsKey}`);
 
         unreadMapRef.current = savedUnread;
         peerReadCursorRef.current = savedReadCursors;
@@ -1267,7 +1271,9 @@ export default function App() {
     };
     const nextPosts = [newPost, ...posts];
     setPosts(nextPosts);
-    writeJsonRecord(postsStorageKey(currentProfile.id), { items: nextPosts });
+    const key = postsStorageKey(currentProfile.id);
+    writeJsonRecord(key, { items: nextPosts });
+    console.log(`Saved new post to ${key}. Total posts: ${nextPosts.length}`);
   };
 
   const handleToggleLike = (postId: string) => {
