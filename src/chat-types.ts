@@ -8,6 +8,7 @@ export type EditableAuthProfile = {
   location?: string;
   statusText?: string;
   avatarDataUrl?: string;
+  coverDataUrl?: string;
 };
 
 export type ProfileDraft = EditableAuthProfile;

@@ -77,13 +77,24 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
     }
   };
 
+  const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        onUpdateDraft("coverDataUrl", reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSave = async () => {
     await onSaveProfile();
     setIsEditing(false);
   };
 
   const avatarPreview = draft.avatarDataUrl || myProfile?.avatarUrl || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=1000&auto=format&fit=crop';
-  const coverPreview = 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?q=80&w=1000&auto=format&fit=crop'; // Placeholder for cover
+  const coverPreview = draft.coverDataUrl || 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?q=80&w=1000&auto=format&fit=crop'; // Use draft cover if exists
 
   const tabs = [
     { id: "Лента", icon: Layout, label: "Feed" },
@@ -120,13 +131,26 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
             <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black" />
           </motion.div>
 
+          {/* Edit Cover Overlay */}
+          {isEditing && (
+            <button 
+              onClick={() => coverInputRef.current?.click()}
+              className="absolute inset-0 flex items-center justify-center bg-black/40 text-white backdrop-blur-[2px] hover:bg-black/50 transition-all group z-30"
+            >
+              <div className="flex flex-col items-center gap-2">
+                <Camera size={32} className="group-hover:scale-110 transition-transform" />
+                <span className="text-[10px] font-black uppercase tracking-widest">Сменить обложку</span>
+              </div>
+            </button>
+          )}
+
           {/* Top Buttons on Cover */}
-          <div className="absolute top-10 right-6 flex items-center gap-2">
+          <div className="absolute top-10 right-6 flex items-center gap-2 z-40">
             <button 
               onClick={() => setIsEditing(!isEditing)}
               className={`h-9 w-9 rounded-full ${isEditing ? 'bg-lime-400 text-black' : 'bg-black/40 text-white'} backdrop-blur-md border border-white/10 flex items-center justify-center hover:opacity-90 transition-all`}
             >
-              <PencilLine size={18} />
+              {isEditing ? <Check size={18} /> : <PencilLine size={18} />}
             </button>
             <button 
               onClick={() => setShowMenu(!showMenu)}
@@ -332,6 +356,7 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
       </AnimatePresence>
 
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
+      <input type="file" ref={coverInputRef} className="hidden" accept="image/*" onChange={handleCoverChange} />
     </div>
   );
 }
