@@ -1469,18 +1469,7 @@ export default function App() {
   ]);
 
   if (authBooting) {
-    return (
-      <div className="flex min-h-[100svh] items-center justify-center bg-black text-white">
-        <div className="flex flex-col items-center">
-          <div className="h-16 w-16 items-center justify-center rounded-[24px] bg-white text-black shadow-2xl flex mb-6 animate-pulse">
-            <Flame className="h-8 w-8" />
-          </div>
-          <div className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">
-            Initializing Adverse...
-          </div>
-        </div>
-      </div>
-    );
+    return <div className="min-h-[100svh] bg-black" />;
   }
 
   if (!isAuthenticated) {
@@ -1489,18 +1478,7 @@ export default function App() {
 
   if (!currentProfile) {
     if (loadingChats) {
-      return (
-        <div className="flex min-h-[100svh] items-center justify-center bg-black text-white">
-          <div className="flex flex-col items-center">
-            <div className="h-16 w-16 items-center justify-center rounded-[24px] bg-white text-black shadow-2xl flex mb-6 animate-pulse">
-              <Flame className="h-8 w-8" />
-            </div>
-            <div className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">
-              Loading Profile...
-            </div>
-          </div>
-        </div>
-      );
+      return <div className="min-h-[100svh] bg-black" />;
     }
     return (
       <div className="flex min-h-[100svh] items-center justify-center bg-black px-4 text-white">
