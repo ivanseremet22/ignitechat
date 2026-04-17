@@ -185,10 +185,6 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
                   </div>
                 )}
               </div>
-              {/* Lightning Badge */}
-              <div className="absolute bottom-1 right-1 h-8 w-10 bg-lime-400 rounded-xl flex items-center justify-center text-black border-[3px] border-black">
-                <span className="font-black text-xs">1⚡</span>
-              </div>
             </div>
 
             {/* Name & Editable Status Area */}
@@ -272,7 +268,7 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
           </div>
 
           {/* Pill Tabs */}
-          <div className="flex items-center gap-2 mt-10 overflow-x-auto no-scrollbar">
+          <div className="flex items-center justify-center gap-2 mt-10 overflow-x-auto no-scrollbar">
             {tabs.map((tab) => {
               const isActive = activeTab === tab.id;
               return (
