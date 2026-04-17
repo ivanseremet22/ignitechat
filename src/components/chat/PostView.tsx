@@ -61,7 +61,7 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
   });
 
   useEffect(() => {
-    if (pullDistance > 120 && !isRefreshing) {
+    if (pullDistance > 90 && !isRefreshing) {
       handleRefresh();
     }
   }, [pullDistance]);
@@ -69,7 +69,7 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
   const handleRefresh = async () => {
     setIsRefreshing(true);
     // Visual delay for the feel of refreshing
-    await new Promise(resolve => setTimeout(resolve, 800));
+    await new Promise(resolve => setTimeout(resolve, 1000));
     window.location.reload();
   };
 
@@ -193,20 +193,21 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
       {/* Pull to Refresh Indicator */}
       <div 
         className="absolute top-0 left-0 right-0 flex justify-center z-[150] pointer-events-none"
-        style={{ height: Math.min(pullDistance, 150) }}
+        style={{ height: Math.min(pullDistance, 120) }}
       >
         <motion.div 
           style={{ 
-            opacity: Math.min(pullDistance / 80, 1),
-            scale: Math.min(pullDistance / 100, 1),
-            rotate: pullDistance * 2
+            opacity: Math.min(pullDistance / 60, 1),
+            scale: pullDistance > 90 ? [1, 1.2, 1] : Math.min(pullDistance / 70, 1),
+            rotate: pullDistance * 3
           }}
-          className="mt-8 h-10 w-10 rounded-full bg-lime-400 flex items-center justify-center text-black shadow-[0_0_20px_rgba(163,230,53,0.4)]"
+          transition={pullDistance > 90 ? { duration: 0.2 } : {}}
+          className="mt-6 h-9 w-9 rounded-full bg-lime-400 flex items-center justify-center text-black shadow-[0_0_25px_rgba(163,230,53,0.5)] border-2 border-black/10"
         >
           {isRefreshing ? (
-            <div className="h-5 w-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+            <div className="h-4 w-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
           ) : (
-            <Flame size={20} className={pullDistance > 120 ? "scale-125" : ""} />
+            <Flame size={18} className={pullDistance > 90 ? "scale-110" : ""} />
           )}
         </motion.div>
       </div>
