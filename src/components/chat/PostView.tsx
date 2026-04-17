@@ -45,29 +45,70 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
     container: containerRef
   });
 
+  const [isPulling, setIsPulling] = useState(false);
+  const startY = useRef(0);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (containerRef.current?.scrollTop === 0) {
+      startY.current = e.touches[0].clientY;
+      setIsPulling(true);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isPulling) return;
+    const currentY = e.touches[0].clientY;
+    const diff = currentY - startY.current;
+    if (diff > 0) {
+      setPullDistance(diff * 0.5); // Resistance
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (pullDistance > 90 && !isRefreshing) {
+      handleRefresh();
+    } else {
+      setPullDistance(0);
+    }
+    setIsPulling(false);
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (containerRef.current?.scrollTop === 0) {
+      startY.current = e.clientY;
+      setIsPulling(true);
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isPulling) return;
+    const currentY = e.clientY;
+    const diff = currentY - startY.current;
+    if (diff > 0) {
+      setPullDistance(diff * 0.5);
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (pullDistance > 90 && !isRefreshing) {
+      handleRefresh();
+    } else {
+      setPullDistance(0);
+    }
+    setIsPulling(false);
+  };
+
   useMotionValueEvent(scrollY, "change", (latest) => {
     if (latest > 100) {
       setShowBottomNav?.(false);
     } else {
       setShowBottomNav?.(true);
     }
-    
-    // Track pull to refresh when at the top
-    if (latest < 0) {
-      setPullDistance(Math.abs(latest));
-    } else {
-      setPullDistance(0);
-    }
   });
-
-  useEffect(() => {
-    if (pullDistance > 90 && !isRefreshing) {
-      handleRefresh();
-    }
-  }, [pullDistance]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
+    setPullDistance(90); // Keep indicator visible
     // Visual delay for the feel of refreshing
     await new Promise(resolve => setTimeout(resolve, 1000));
     window.location.reload();
@@ -266,6 +307,13 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
       <div 
         ref={containerRef}
         className="relative z-20 h-full overflow-y-auto no-scrollbar scroll-smooth"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
       >
         {/* Cover Section */}
         <div className="relative h-64 w-full overflow-hidden bg-[#111]">
@@ -502,10 +550,10 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
                     <div className="p-5 flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-full overflow-hidden border border-white/10">
-                          <img src={post.userAvatar} className="h-full w-full object-cover" />
+                          <img src={post.userId === myProfile?.id ? avatarPreview : post.userAvatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=1000&auto=format&fit=crop'} className="h-full w-full object-cover" />
                         </div>
                         <div>
-                          <p className="text-xs font-bold tracking-tight">{post.userName}</p>
+                          <p className="text-xs font-bold tracking-tight">{post.userId === myProfile?.id ? (draft.name || myProfile?.name) : post.userName}</p>
                           <p className="text-[10px] text-white/20 font-bold uppercase">{formatPostDate(post.createdAt)}</p>
                         </div>
                       </div>
@@ -667,11 +715,11 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
                                   {(expandedComments.has(post.id) ? post.comments : [post.comments[post.comments.length - 1]]).map((comment) => (
                                     <div key={comment.id} className="flex gap-3">
                                       <div className="h-6 w-6 rounded-full overflow-hidden border border-white/10 shrink-0">
-                                        <img src={comment.userAvatar} className="h-full w-full object-cover" />
+                                        <img src={comment.userId === myProfile?.id ? avatarPreview : comment.userAvatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=1000&auto=format&fit=crop'} className="h-full w-full object-cover" />
                                       </div>
                                       <div className="flex-1">
                                         <div className="flex items-center gap-2">
-                                          <span className="text-[10px] font-bold text-white/40">{comment.userName}</span>
+                                          <span className="text-[10px] font-bold text-white/40">{comment.userId === myProfile?.id ? (draft.name || myProfile?.name) : comment.userName}</span>
                                           <span className="text-[8px] font-medium text-white/10 uppercase">{formatPostDate(comment.createdAt)}</span>
                                         </div>
                                         <p className="text-[11px] font-medium text-white/70 leading-relaxed">{comment.content}</p>

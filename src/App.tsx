@@ -1262,7 +1262,7 @@ export default function App() {
       id: crypto.randomUUID(),
       userId: currentProfile.id,
       userName: authProfile?.name || currentProfile.name,
-      userAvatar: authProfile?.avatarDataUrl || currentProfile.avatarUrl || "",
+      userAvatar: "", // Не сохраняем тяжелый аватар в каждом посте
       content,
       imageUrl,
       createdAt: new Date().toISOString(),
@@ -1296,7 +1296,7 @@ export default function App() {
       id: crypto.randomUUID(),
       userId: currentProfile.id,
       userName: authProfile?.name || currentProfile.name,
-      userAvatar: authProfile?.avatarDataUrl || currentProfile.avatarUrl || "",
+      userAvatar: "", // Не сохраняем тяжелый аватар в каждом комментарии
       content: content.trim(),
       createdAt: new Date().toISOString(),
     };
@@ -1363,6 +1363,7 @@ export default function App() {
         location: myProfileDraft.location?.trim() || "",
         statusText: myProfileDraft.statusText?.trim() || "",
         avatarDataUrl: finalAvatarUrl,
+        coverDataUrl: myProfileDraft.coverDataUrl,
       };
 
       if (typeof window !== "undefined") {
