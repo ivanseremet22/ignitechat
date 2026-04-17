@@ -16,9 +16,10 @@ type ProfileViewProps = {
   onSaveProfile: () => Promise<void>;
   onSignOut?: () => void;
   setShowBottomNav?: (show: boolean) => void;
+  onRefresh?: () => Promise<void>;
 };
 
-export default function ProfileView({ myProfile, draft, posts, onAddPost, onDeletePost, onUpdatePost, onToggleLike, onAddComment, onUpdateDraft, onSaveProfile, onSignOut, setShowBottomNav }: ProfileViewProps) {
+export default function ProfileView({ myProfile, draft, posts, onAddPost, onDeletePost, onUpdatePost, onToggleLike, onAddComment, onUpdateDraft, onSaveProfile, onSignOut, setShowBottomNav, onRefresh }: ProfileViewProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState("Лента");
   const [showMenu, setShowMenu] = useState(false);
@@ -34,17 +35,6 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
   const [editPostImage, setEditPostImage] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const coverInputRef = useRef<HTMLInputElement>(null);
-  const postImageInputRef = useRef<HTMLInputElement>(null);
-  const editPostImageInputRef = useRef<HTMLInputElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const { scrollY } = useScroll({
-    container: containerRef
-  });
-
   const [isPulling, setIsPulling] = useState(false);
   const startY = useRef(0);
 
@@ -98,6 +88,33 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
     setIsPulling(false);
   };
 
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    setPullDistance(90);
+    
+    try {
+      if (onRefresh) {
+        await onRefresh();
+      } else {
+        // Fallback delay if no refresh function provided
+        await new Promise(resolve => setTimeout(resolve, 800));
+      }
+    } finally {
+      setIsRefreshing(false);
+      setPullDistance(0);
+    }
+  };
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
+  const postImageInputRef = useRef<HTMLInputElement>(null);
+  const editPostImageInputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const { scrollY } = useScroll({
+    container: containerRef
+  });
+
   useMotionValueEvent(scrollY, "change", (latest) => {
     if (latest > 100) {
       setShowBottomNav?.(false);
@@ -105,15 +122,6 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
       setShowBottomNav?.(true);
     }
   });
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    setPullDistance(90);
-    // Просто имитируем обновление данных без перезагрузки страницы window.location.reload()
-    await new Promise(resolve => setTimeout(resolve, 800));
-    setIsRefreshing(false);
-    setPullDistance(0);
-  };
 
   const smoothScrollY = useSpring(scrollY, {
     stiffness: 100,

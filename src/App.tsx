@@ -1557,7 +1557,7 @@ export default function App() {
                     transition={{ duration: 0.2, ease: "easeOut" }}
                     className="absolute inset-0"
                   >
-                    <ProfileView 
+                      <ProfileView 
                       myProfile={myProfile} 
                       draft={myProfileDraft}
                       posts={posts}
@@ -1572,6 +1572,22 @@ export default function App() {
                       }}
                       onSignOut={signOutToRegistration}
                       setShowBottomNav={setShowBottomNav}
+                      onRefresh={async () => {
+                        // Фоновое обновление данных без установки loading=true
+                        if (!authClient || !currentProfile) return;
+                        try {
+                          const savedPostsKey = postsStorageKey(currentProfile.id);
+                          const savedPostsRaw = readJsonRecord<{ items: Post[] }>(savedPostsKey);
+                          const savedPosts = savedPostsRaw.items || [];
+                          setPosts(savedPosts);
+                          
+                          // Можно также обновить профиль из базы, если нужно
+                          const nextProfile = await fetchCurrentProfile(authClient);
+                          setCurrentProfile(nextProfile);
+                        } catch (e) {
+                          console.error("Refresh error:", e);
+                        }
+                      }}
                     />
                   </motion.div>
                 ) : activeTab === "discover" ? (
