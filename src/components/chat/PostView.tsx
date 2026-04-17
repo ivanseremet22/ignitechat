@@ -1,23 +1,30 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, useScroll, useTransform, useSpring, useMotionValueEvent, AnimatePresence } from "framer-motion";
 import { X, MoreHorizontal, Check, Camera, PencilLine, Save, HelpCircle, LogOut, Settings, User as UserIcon, Flame, Bell, Share2, Grid, Image as ImageIcon, Layout, Download, Hash, Calendar, MapPin } from "lucide-react";
-import { UserProfile, ProfileDraft } from "../../chat-types";
+import { UserProfile, ProfileDraft, Post } from "../../chat-types";
 
 type ProfileViewProps = {
   myProfile: UserProfile | null;
   draft: ProfileDraft;
+  posts: Post[];
+  onAddPost: (content: string, imageUrl?: string) => void;
   onUpdateDraft: (field: keyof ProfileDraft, value: string) => void;
   onSaveProfile: () => Promise<void>;
   onSignOut?: () => void;
   setShowBottomNav?: (show: boolean) => void;
 };
 
-export default function ProfileView({ myProfile, draft, onUpdateDraft, onSaveProfile, onSignOut, setShowBottomNav }: ProfileViewProps) {
+export default function ProfileView({ myProfile, draft, posts, onAddPost, onUpdateDraft, onSaveProfile, onSignOut, setShowBottomNav }: ProfileViewProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState("Лента");
   const [showMenu, setShowMenu] = useState(false);
+  const [newPostContent, setNewPostContent] = useState("");
+  const [newPostImage, setNewPostImage] = useState<string | null>(null);
+  const [showCreatePost, setShowCreatePost] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const postImageInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { scrollY } = useScroll({
@@ -88,6 +95,26 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
     }
   };
 
+  const handlePostImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewPostImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleCreatePost = () => {
+    if (newPostContent.trim() || newPostImage) {
+      onAddPost(newPostContent, newPostImage || undefined);
+      setNewPostContent("");
+      setNewPostImage(null);
+      setShowCreatePost(false);
+    }
+  };
+
   const handleSave = async () => {
     await onSaveProfile();
     setIsEditing(false);
@@ -101,6 +128,20 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
     { id: "Вызовы", icon: UserIcon, label: "Challenge" },
     { id: "Значки", icon: ImageIcon, label: "Badge" }
   ];
+
+  const formatPostDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (minutes < 1) return "Только что";
+    if (minutes < 60) return `${minutes} мин. назад`;
+    if (hours < 24) return `${hours} ч. назад`;
+    return `${days} дн. назад`;
+  };
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black font-sans no-scrollbar select-none text-white">
@@ -287,30 +328,89 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
 
           {/* Content Area */}
           <div className="mt-10 space-y-6">
-             {/* Example Post Card */}
-             <div className="rounded-[40px] bg-white/[0.03] border border-white/[0.08] overflow-hidden backdrop-blur-md">
-                <div className="p-5 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full overflow-hidden border border-white/10">
+             {/* Create Post UI */}
+             <div className="rounded-[40px] bg-white/[0.03] border border-white/[0.08] p-6 backdrop-blur-md">
+                <div className="flex items-start gap-4">
+                   <div className="h-12 w-12 rounded-full overflow-hidden border border-white/10 shrink-0">
                       <img src={avatarPreview} className="h-full w-full object-cover" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold tracking-tight">{draft.name || myProfile?.name}</p>
-                      <p className="text-[10px] text-white/20 font-bold uppercase">3 ч. назад</p>
-                    </div>
-                  </div>
-                  <MoreHorizontal size={18} className="text-white/20" />
-                </div>
-                <div className="px-5 pb-5">
-                  <p className="text-sm font-medium mb-4 leading-relaxed">Прекрасный пейзаж 😍🌱</p>
-                  <div className="rounded-[28px] overflow-hidden aspect-video bg-white/5 border border-white/5">
-                    <img 
-                      src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&q=80&w=1000" 
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
+                   </div>
+                   <div className="flex-1 space-y-4">
+                      <textarea 
+                        value={newPostContent}
+                        onChange={(e) => setNewPostContent(e.target.value)}
+                        placeholder="Что у вас нового?"
+                        className="w-full bg-transparent border-none text-sm font-medium focus:outline-none resize-none min-h-[60px] placeholder:text-white/20"
+                      />
+                      
+                      {newPostImage && (
+                        <div className="relative rounded-[24px] overflow-hidden aspect-video border border-white/10 group">
+                           <img src={newPostImage} className="h-full w-full object-cover" />
+                           <button 
+                             onClick={() => setNewPostImage(null)}
+                             className="absolute top-2 right-2 h-8 w-8 rounded-full bg-black/60 flex items-center justify-center text-white"
+                           >
+                             <X size={16} />
+                           </button>
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                         <button 
+                           onClick={() => postImageInputRef.current?.click()}
+                           className="flex items-center gap-2 text-white/40 hover:text-lime-400 transition-colors"
+                         >
+                            <ImageIcon size={20} />
+                            <span className="text-[10px] font-bold uppercase tracking-widest">Фото</span>
+                         </button>
+                         <button 
+                           onClick={handleCreatePost}
+                           disabled={!newPostContent.trim() && !newPostImage}
+                           className="px-6 py-2.5 bg-lime-400 text-black rounded-full text-[10px] font-black uppercase tracking-widest disabled:opacity-50 disabled:grayscale transition-all active:scale-95"
+                         >
+                            Опубликовать
+                         </button>
+                      </div>
+                   </div>
                 </div>
              </div>
+
+             {/* Posts List */}
+             {posts.length > 0 ? (
+               posts.map((post) => (
+                 <div key={post.id} className="rounded-[40px] bg-white/[0.03] border border-white/[0.08] overflow-hidden backdrop-blur-md">
+                    <div className="p-5 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full overflow-hidden border border-white/10">
+                          <img src={post.userAvatar} className="h-full w-full object-cover" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold tracking-tight">{post.userName}</p>
+                          <p className="text-[10px] text-white/20 font-bold uppercase">{formatPostDate(post.createdAt)}</p>
+                        </div>
+                      </div>
+                      <MoreHorizontal size={18} className="text-white/20" />
+                    </div>
+                    <div className="px-5 pb-5">
+                      {post.content && (
+                        <p className="text-sm font-medium mb-4 leading-relaxed">{post.content}</p>
+                      )}
+                      {post.imageUrl && (
+                        <div className="rounded-[28px] overflow-hidden aspect-video bg-white/5 border border-white/5">
+                          <img 
+                            src={post.imageUrl} 
+                            className="h-full w-full object-cover"
+                            alt="Post content"
+                          />
+                        </div>
+                      )}
+                    </div>
+                 </div>
+               ))
+             ) : (
+               <div className="py-20 text-center">
+                  <p className="text-white/20 text-xs font-bold uppercase tracking-widest">Пока нет постов</p>
+               </div>
+             )}
           </div>
         </div>
       </div>
@@ -356,6 +456,7 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
 
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
       <input type="file" ref={coverInputRef} className="hidden" accept="image/*" onChange={handleCoverChange} />
+      <input type="file" ref={postImageInputRef} className="hidden" accept="image/*" onChange={handlePostImageChange} />
     </div>
   );
 }

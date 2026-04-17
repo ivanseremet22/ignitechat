@@ -3,7 +3,7 @@ import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { MessageSquarePlus, Search, UserRound, Video, X, Flame, AlertCircle } from "lucide-react";
 import AuthPage, { type AuthMode, type RegisterPayload, getInitials } from "./AuthPage";
-import type { Chat, EditableAuthProfile, Message, MessageStatus, Reaction, UserProfile } from "./chat-types";
+import type { Chat, EditableAuthProfile, Message, MessageStatus, Post, Reaction, UserProfile } from "./chat-types";
 import Sidebar from "./components/chat/Sidebar";
 import MyProfilePage from "./components/chat/MyProfilePage";
 import ChatView from "./components/chat/ChatView";
@@ -240,6 +240,7 @@ export default function App() {
   const [newGroupName, setNewGroupName] = useState("");
   const [showBottomNav, setShowBottomNav] = useState(true);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [myProfileDraft, setMyProfileDraft] = useState<EditableAuthProfile>({
     name: "",
     username: "",
@@ -1245,6 +1246,20 @@ export default function App() {
     updateMyProfileDraft("avatarDataUrl", "");
   }
 
+  const handleAddPost = (content: string, imageUrl?: string) => {
+    if (!currentProfile) return;
+    const newPost: Post = {
+      id: crypto.randomUUID(),
+      userId: currentProfile.id,
+      userName: authProfile?.name || currentProfile.name,
+      userAvatar: authProfile?.avatarDataUrl || currentProfile.avatarUrl || "",
+      content,
+      imageUrl,
+      createdAt: new Date().toISOString(),
+    };
+    setPosts([newPost, ...posts]);
+  };
+
   function handleProfileAvatarChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1503,6 +1518,8 @@ export default function App() {
                     <ProfileView 
                       myProfile={myProfile} 
                       draft={myProfileDraft}
+                      posts={posts}
+                      onAddPost={handleAddPost}
                       onUpdateDraft={(field, value) => updateMyProfileDraft(field as any, value)}
                       onSaveProfile={async () => {
                         await saveMyProfile();

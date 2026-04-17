@@ -69,3 +69,13 @@ export type Chat = {
   isGroup?: boolean;
   avatarUrl?: string;
 };
+
+export type Post = {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  content: string;
+  imageUrl?: string;
+  createdAt: string;
+};
