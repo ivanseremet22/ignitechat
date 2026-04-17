@@ -256,7 +256,7 @@ export default function ProfileView({ myProfile, draft, posts, onAddPost, onDele
   };
 
   const avatarPreview = draft.avatarDataUrl || myProfile?.avatarUrl || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=1000&auto=format&fit=crop';
-  const coverPreview = draft.coverDataUrl || 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?q=80&w=1000&auto=format&fit=crop'; // Use draft cover if exists
+  const coverPreview = draft.coverDataUrl || myProfile?.coverUrl || 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?q=80&w=1000&auto=format&fit=crop'; 
 
   const tabs = [
     { id: "Лента", icon: Layout, label: "Feed" },

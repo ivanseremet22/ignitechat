@@ -164,6 +164,10 @@ function normalizeProfileRow(row: ProfileRow, authUser?: User | null): UserProfi
     getString(row.avatar).trim() ||
     getString(row.avatarDataUrl).trim();
 
+  const coverUrl =
+    getString(row.cover_url).trim() ||
+    getString(row.coverDataUrl).trim();
+
   return {
     id: row.id,
     name,
@@ -179,6 +183,7 @@ function normalizeProfileRow(row: ProfileRow, authUser?: User | null): UserProfi
     accent: makeAccent(row.id),
     interests: ["Chat"],
     avatarUrl: avatarUrl || undefined,
+    coverUrl: coverUrl || undefined,
   };
 }
 

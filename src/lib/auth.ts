@@ -156,6 +156,7 @@ async function upsertProfile(user: User, profile: EditableAuthProfile) {
     location: profile.location || "",
     status: profile.statusText || "в сети",
     avatar_url: profile.avatarDataUrl || "",
+    cover_url: profile.coverDataUrl || "",
     updated_at: new Date().toISOString(),
   };
 

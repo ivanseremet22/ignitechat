@@ -231,6 +231,7 @@ export default function App() {
         accent: "from-amber-300 via-orange-200 to-yellow-100",
         interests: ["Chat"],
         avatarUrl: profile.avatarDataUrl,
+        coverUrl: profile.coverDataUrl,
       };
     }
     return null;
