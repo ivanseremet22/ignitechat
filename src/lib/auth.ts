@@ -216,6 +216,19 @@ export async function syncProfileToSupabase(profile: EditableAuthProfile) {
     await upsertProfile(user, normalized);
     return normalized;
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || "");
+    if (message.includes("Refresh Token Not Found") || message.includes("Invalid Refresh Token")) {
+      console.warn("Session recovery failed due to invalid refresh token. Clearing local storage.");
+      safeStorageRemove(AUTH_STORAGE_KEY);
+      safeStorageRemove(PROFILE_STORAGE_KEY);
+      if (authClient) {
+        await authClient.auth.signOut().catch(() => {});
+      }
+      return {
+        isAuthenticated: false,
+        profile: null,
+      };
+    }
     throw normalizeAuthError(error);
   }
 }
@@ -376,6 +389,19 @@ export async function restoreAuthProfile() {
       profile: restored,
     };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || "");
+    if (message.includes("Refresh Token Not Found") || message.includes("Invalid Refresh Token")) {
+      console.warn("Session restoration failed due to invalid refresh token. Clearing local storage.");
+      safeStorageRemove(AUTH_STORAGE_KEY);
+      safeStorageRemove(PROFILE_STORAGE_KEY);
+      if (authClient) {
+        await authClient.auth.signOut().catch(() => {});
+      }
+      return {
+        isAuthenticated: false,
+        profile: null,
+      };
+    }
     throw normalizeAuthError(error);
   }
 }

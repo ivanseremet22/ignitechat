@@ -1,53 +1,66 @@
 import React, { useState, useRef, useEffect } from "react";
-import { motion, useScroll, useTransform, useSpring } from "framer-motion";
-import { X, MoreHorizontal, Check, ChevronDown, Camera, PencilLine, Save, HelpCircle } from "lucide-react";
+import { motion, useScroll, useTransform, useSpring, useMotionValueEvent, AnimatePresence } from "framer-motion";
+import { X, MoreHorizontal, Check, Camera, PencilLine, Save, HelpCircle, LogOut, Settings, User as UserIcon, Flame, Bell, Share2, Grid, Image as ImageIcon, Layout, Download, Hash, Calendar, MapPin } from "lucide-react";
 import { UserProfile, ProfileDraft } from "../../chat-types";
 
 type ProfileViewProps = {
   myProfile: UserProfile | null;
   draft: ProfileDraft;
-  onUpdateDraft: (field: string, value: string) => void;
+  onUpdateDraft: (field: keyof ProfileDraft, value: string) => void;
   onSaveProfile: () => Promise<void>;
+  onSignOut?: () => void;
+  setShowBottomNav?: (show: boolean) => void;
 };
 
-export default function ProfileView({ myProfile, draft, onUpdateDraft, onSaveProfile }: ProfileViewProps) {
+export default function ProfileView({ myProfile, draft, onUpdateDraft, onSaveProfile, onSignOut, setShowBottomNav }: ProfileViewProps) {
   const [isEditing, setIsEditing] = useState(false);
-  const [activeTab, setActiveTab] = useState("Going");
+  const [activeTab, setActiveTab] = useState("Лента");
+  const [showMenu, setShowMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { scrollY } = useScroll({
     container: containerRef
   });
 
+  useMotionValueEvent(scrollY, "change", (latest) => {
+    if (latest > 100) {
+      setShowBottomNav?.(false);
+    } else {
+      setShowBottomNav?.(true);
+    }
+  });
+
   const smoothScrollY = useSpring(scrollY, {
-    stiffness: 70, // More weighted feel
-    damping: 40,   // More control, less bounce
-    mass: 1,
+    stiffness: 100,
+    damping: 30,
+    mass: 0.5,
     restDelta: 0.001
   });
 
-  // Background Blur/Scale on Scroll
-  const bgBlur = useTransform(smoothScrollY, [0, 200], ["0px", "10px"]);
-  const bgScale = useTransform(smoothScrollY, [0, 300], [1, 1.05]);
-  
-  // Content Fade on Scroll
-  const initialTextOpacity = useTransform(smoothScrollY, [0, 100], [1, 0]);
-  
-  // Bottom Card Expansion - Using absolute positioning for better control
-  const cardYPos = useTransform(smoothScrollY, [0, 500], ["85vh", "0vh"]); 
-  const cardHeight = useTransform(smoothScrollY, [0, 500], ["15vh", "100vh"]);
-  const cardRadius = useTransform(smoothScrollY, [0, 500], ["40px", "0px"]); 
+  // Animations based on scroll
+  const headerOpacity = useTransform(smoothScrollY, [100, 200], [0, 1]);
+  const coverScale = useTransform(smoothScrollY, [-100, 0], [1.2, 1]);
 
   // Initialize draft
   useEffect(() => {
-    if (myProfile && !draft.name) {
-      onUpdateDraft("name", myProfile.name);
+    if (myProfile) {
+      const fields: (keyof ProfileDraft)[] = [
+        "name", "username", "bio", "email", "phone", "location", "statusText", "avatarDataUrl"
+      ];
+      fields.forEach(field => {
+        const val = (myProfile as any)[field] || (myProfile as any)[field === 'statusText' ? 'status' : ''];
+        if (val && !draft[field]) {
+          onUpdateDraft(field, val);
+        }
+      });
     }
-    if (myProfile && !draft.bio) {
-      onUpdateDraft("bio", myProfile.bio || "");
-    }
-  }, [myProfile, draft.name, draft.bio, onUpdateDraft]);
+    
+    return () => {
+      setShowBottomNav?.(true);
+    };
+  }, [myProfile, onUpdateDraft, setShowBottomNav]);
 
   const handlePhotoClick = () => {
     if (isEditing) fileInputRef.current?.click();
@@ -70,199 +83,261 @@ export default function ProfileView({ myProfile, draft, onUpdateDraft, onSavePro
   };
 
   const avatarPreview = draft.avatarDataUrl || myProfile?.avatarUrl || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=1000&auto=format&fit=crop';
+  const coverPreview = 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?q=80&w=1000&auto=format&fit=crop'; // Placeholder for cover
+
+  const tabs = [
+    { id: "Лента", icon: Layout, label: "Feed" },
+    { id: "Вызовы", icon: UserIcon, label: "Challenge" },
+    { id: "Значки", icon: ImageIcon, label: "Badge" }
+  ];
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-black font-sans no-scrollbar">
-      {/* Background Image Container */}
-      <div className="absolute inset-0 z-0 overflow-hidden bg-black">
-        <motion.div 
-          style={{ 
-            backgroundImage: `url('${avatarPreview}')`,
-            filter: `brightness(0.7) blur(${bgBlur})`,
-            scale: bgScale
-          }}
-          className="h-full w-full bg-cover bg-center"
-        />
-        <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/40 via-transparent to-black/95 pointer-events-none" />
-      </div>
+    <div className="relative h-full w-full overflow-hidden bg-black font-sans no-scrollbar select-none text-white">
+      {/* Sticky Header for scroll */}
+      <motion.div 
+        style={{ opacity: headerOpacity }}
+        className="fixed top-0 left-0 right-0 z-[120] bg-black/80 backdrop-blur-xl h-16 flex items-center px-6 pointer-events-none"
+      >
+        <p className="font-bold text-sm truncate">{draft.name || myProfile?.name}</p>
+      </motion.div>
 
-      {/* Top Header Buttons */}
-      <div className="relative z-[110] flex items-center justify-between px-6 pt-12">
-        <button className="relative z-30 flex h-10 w-10 items-center justify-center rounded-full glass-surface text-white hover:bg-white/10 transition-colors">
-          <X size={20} />
-        </button>
+      {/* Scrollable Container */}
+      <div 
+        ref={containerRef}
+        className="relative z-20 h-full overflow-y-auto no-scrollbar scroll-smooth"
+      >
+        {/* Cover Section */}
+        <div className="relative h-64 w-full overflow-hidden bg-[#111]">
+          <motion.div 
+            style={{ scale: coverScale }}
+            className="h-full w-full"
+          >
+            <img 
+              src={coverPreview} 
+              className="h-full w-full object-cover opacity-60"
+              alt="Cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black" />
+          </motion.div>
 
-        {/* Centered Name Header */}
-        <div className="absolute inset-x-0 top-12 flex items-center justify-center px-20">
-          <h1 className="text-xl font-bold text-white tracking-tight drop-shadow-xl truncate max-w-[200px]">
-            {draft.name || myProfile?.name || "Profile"}
-          </h1>
-        </div>
-        
-        <div className="relative z-30 flex items-center gap-2">
-          {isEditing ? (
+          {/* Top Buttons on Cover */}
+          <div className="absolute top-10 right-6 flex items-center gap-2">
             <button 
-              onClick={handleSave}
-              className="flex h-10 px-4 items-center justify-center gap-2 rounded-full bg-white text-black font-bold text-xs shadow-xl hover:bg-white/90 transition-colors"
-            >
-              <Save size={16} /> Save
-            </button>
-          ) : (
-            <button 
-              onClick={() => setIsEditing(true)}
-              className="flex h-10 w-10 items-center justify-center rounded-full glass-surface text-white hover:bg-white/10 transition-colors"
+              onClick={() => setIsEditing(!isEditing)}
+              className={`h-9 w-9 rounded-full ${isEditing ? 'bg-lime-400 text-black' : 'bg-black/40 text-white'} backdrop-blur-md border border-white/10 flex items-center justify-center hover:opacity-90 transition-all`}
             >
               <PencilLine size={18} />
             </button>
-          )}
-          <button className="flex h-10 w-10 items-center justify-center rounded-full glass-surface text-white hover:bg-white/10 transition-colors">
-            <MoreHorizontal size={20} />
-          </button>
+            <button 
+              onClick={() => setShowMenu(!showMenu)}
+              className="h-9 w-9 rounded-full bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center hover:bg-black/60 transition-colors"
+            >
+              <MoreHorizontal size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Profile Info Section */}
+        <div className="relative px-6 pb-32 bg-black">
+          {/* Layout: Avatar, then Name & Status directly below */}
+          <div className="flex flex-col items-start">
+            {/* Overlapping Avatar */}
+            <div className="relative -mt-16 mb-4">
+              <div 
+                onClick={handlePhotoClick}
+                className={`h-32 w-32 rounded-full border-4 border-black overflow-hidden bg-[#111] shadow-2xl relative ${isEditing ? 'cursor-pointer group' : ''}`}
+              >
+                <img 
+                  src={avatarPreview} 
+                  className="h-full w-full object-cover transition-transform group-hover:scale-110"
+                  alt="Profile"
+                />
+                {isEditing && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Camera size={24} />
+                  </div>
+                )}
+              </div>
+              {/* Lightning Badge */}
+              <div className="absolute bottom-1 right-1 h-8 w-10 bg-lime-400 rounded-xl flex items-center justify-center text-black border-[3px] border-black">
+                <span className="font-black text-xs">1⚡</span>
+              </div>
+            </div>
+
+            {/* Name & Editable Status Area */}
+            <div className="w-full space-y-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-4xl font-black tracking-tighter uppercase leading-none">
+                    {draft.name || myProfile?.name || "БЕЗ ИМЕНИ"}
+                  </h2>
+                  {!isEditing && (
+                    <button 
+                      onClick={() => setIsEditing(true)}
+                      className="text-white/20 hover:text-lime-400 transition-colors"
+                    >
+                      <PencilLine size={16} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Editable Status Line */}
+                <div className="relative group">
+                  {isEditing ? (
+                    <div className="flex flex-col gap-4 mt-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] ml-2">Имя</label>
+                        <input 
+                          value={draft.name}
+                          onChange={(e) => onUpdateDraft("name", e.target.value)}
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl h-12 px-4 text-sm font-bold focus:outline-none focus:border-lime-400 transition-colors"
+                          placeholder="Ваше имя..."
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] ml-2">Статус</label>
+                        <textarea 
+                          value={draft.bio}
+                          onChange={(e) => onUpdateDraft("bio", e.target.value)}
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-lime-400 transition-colors resize-none h-20"
+                          placeholder="Ваш статус..."
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={handleSave}
+                          className="flex-1 h-12 bg-lime-400 text-black font-black rounded-2xl shadow-[0_0_20px_rgba(163,230,53,0.3)] active:scale-95 transition-all uppercase text-xs"
+                        >
+                          Сохранить
+                        </button>
+                        <button 
+                          onClick={() => setIsEditing(false)}
+                          className="px-6 h-12 bg-white/5 text-white font-black rounded-2xl border border-white/10 active:scale-95 transition-all uppercase text-xs"
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 pt-1">
+                      <p className="text-white/60 font-medium text-sm leading-relaxed max-w-[80%]">
+                        {draft.bio || myProfile?.bio || "Установить статус..."}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Stats/Details Row (Only show if not editing or keep minimal) */}
+              {!isEditing && (
+                <div className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
+                  <div className="flex items-center gap-1.5 text-white/40 text-[10px] font-black uppercase tracking-widest bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
+                    <Hash size={12} className="text-lime-400" /> Elevate
+                  </div>
+                  <div className="flex items-center gap-1.5 text-white/40 text-[10px] font-black uppercase tracking-widest bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
+                    <Calendar size={12} className="text-white/40" /> Июнь 2024
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Pill Tabs */}
+          <div className="flex items-center gap-2 mt-10 overflow-x-auto no-scrollbar">
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
+                    isActive ? 'bg-lime-400 text-black shadow-lg shadow-lime-400/20' : 'bg-white/5 text-white/40 border border-white/10 hover:bg-white/10'
+                  }`}
+                >
+                  {tab.id}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Content Area */}
+          <div className="mt-10 space-y-6">
+             {/* Example Post Card */}
+             <div className="rounded-[40px] bg-white/[0.03] border border-white/[0.08] overflow-hidden backdrop-blur-md">
+                <div className="p-5 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full overflow-hidden border border-white/10">
+                      <img src={avatarPreview} className="h-full w-full object-cover" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-black tracking-tight">{draft.name || myProfile?.name}</p>
+                      <p className="text-[10px] text-white/20 font-black uppercase">3 ч. назад</p>
+                    </div>
+                  </div>
+                  <MoreHorizontal size={18} className="text-white/20" />
+                </div>
+                <div className="px-5 pb-5">
+                  <p className="text-sm font-medium mb-4 leading-relaxed">Прекрасный пейзаж 😍🌱</p>
+                  <div className="rounded-[28px] overflow-hidden aspect-video bg-white/5 border border-white/5">
+                    <img 
+                      src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&q=80&w=1000" 
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                  <div className="flex items-center gap-4 mt-5">
+                     <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/5 text-[11px] font-bold">
+                        <Bell size={14} className="text-lime-400" /> 12
+                     </div>
+                     <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/5 text-[11px] font-bold">
+                        <Share2 size={14} className="text-blue-400" /> 40
+                     </div>
+                  </div>
+                </div>
+             </div>
+          </div>
         </div>
       </div>
 
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        className="hidden" 
-        accept="image/*" 
-        onChange={handleFileChange} 
-      />
-
-      {/* Scrollable Content Container */}
-      <div 
-        ref={containerRef}
-        className="relative z-20 h-full overflow-y-auto no-scrollbar pt-[25vh]"
-      >
-        <div className="h-[1200px] w-full flex flex-col items-center">
-          {/* Central Information Section */}
-          <motion.div 
-            style={{ opacity: initialTextOpacity }}
-            className="flex flex-col items-center text-center px-8"
-          >
-            <h1 className="text-4xl font-bold tracking-tight text-white mb-6 drop-shadow-2xl">
-              Housewarming Party
-            </h1>
-            <div className="space-y-1 text-base font-medium text-white/70">
-              <p>19 September, 12 pm</p>
-              <p>1559 Audubon Ave</p>
-              <p>New York, NY</p>
-            </div>
-
-            {/* Segmented Control Tabs */}
-            <div className="mt-10 flex w-[320px] items-center gap-1 rounded-[24px] bg-black/30 p-1 backdrop-blur-xl border border-white/10">
-              <button
-                onClick={() => setActiveTab("Going")}
-                className={`flex flex-1 items-center justify-center gap-2 rounded-[20px] py-3 text-xs font-bold transition-all duration-300 ${
-                  activeTab === "Going" ? "bg-white text-green-600 shadow-xl" : "text-white/40"
-                }`}
-              >
-                <Check size={14} className={activeTab === "Going" ? "text-green-600" : "text-white/40"} />
-                Going
-              </button>
-              <button
-                onClick={() => setActiveTab("Not Going")}
-                className={`flex flex-1 items-center justify-center gap-2 rounded-[20px] py-3 text-xs font-bold transition-all duration-300 ${
-                  activeTab === "Not Going" ? "bg-white text-red-600 shadow-xl" : "text-white/40"
-                }`}
-              >
-                <X size={14} className={activeTab === "Not Going" ? "text-red-600" : "text-white/40"} />
-                Not Going
-              </button>
-              <button
-                onClick={() => setActiveTab("Maybe")}
-                className={`flex flex-1 items-center justify-center gap-2 rounded-[20px] py-3 text-xs font-bold transition-all duration-300 ${
-                  activeTab === "Maybe" ? "bg-white text-blue-600 shadow-xl" : "text-white/40"
-                }`}
-              >
-                <HelpCircle size={14} className={activeTab === "Maybe" ? "text-blue-600" : "text-white/40"} />
-                Maybe
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      </div>
-
-      {/* Fixed Card Container - Peeks from the bottom and expands */}
-       <motion.div 
-         style={{ 
-           y: cardYPos,
-           height: cardHeight,
-           borderRadius: cardRadius,
-         }}
-         className="fixed left-0 right-0 top-0 z-30 glass-card-dark overflow-y-auto no-scrollbar p-8 shadow-2xl backdrop-blur-3xl px-6 sm:px-12 pointer-events-auto"
-       >
-        {/* Scroll Indicator Handle */}
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-white/20" />
-
-        <div className="flex flex-col items-center text-center mt-2 pb-24">
-          <div className="mb-4 flex justify-center">
-            <img 
-              src={avatarPreview || "https://api.dicebear.com/7.x/avataaars/svg?seed=Andre"} 
-              alt="Host" 
-              className="h-10 w-10 rounded-full border-2 border-white/20 shadow-xl"
+      {/* Menu Overlay */}
+      <AnimatePresence>
+        {showMenu && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowMenu(false)}
+              className="fixed inset-0 z-[130] bg-black/60 backdrop-blur-sm"
             />
-          </div>
-          
-          <h3 className="mb-2 text-sm font-bold text-blue-400">
-            Hosted by {draft.name || myProfile?.name || "Andre Lorico"}
-          </h3>
-          
-          <div className="w-full space-y-4 px-4">
-            <p className="text-sm font-medium leading-relaxed text-white/90">
-              We've just moved to New York!<br />
-              And warmer weather means<br />
-              housewarming!
-            </p>
-            <p className="text-xs font-medium leading-relaxed text-white/50">
-              We'll have light refreshments, drinks and<br />
-              BBQing in the evening. Stop by to hang<br />
-              out, catch up and friends meet friends!
-            </p>
-            {/* Added more content to test scrolling within the card */}
-            <p className="text-xs font-medium leading-relaxed text-white/40">
-              Join us for a wonderful evening filled with music and laughter.
-            </p>
-          </div>
-        </div>
-
-        {isEditing && (
-          <div 
-            onClick={handlePhotoClick}
-            className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 cursor-pointer"
-          >
-            <Camera size={32} className="text-white animate-pulse" />
-          </div>
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed bottom-0 left-0 right-0 z-[140] bg-[#111] rounded-t-[40px] p-8 pb-12 border-t border-white/10"
+            >
+              <div className="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-8" />
+              <div className="space-y-3">
+                <button className="w-full flex items-center gap-4 p-5 rounded-[24px] bg-white/5 hover:bg-white/10 transition-colors font-black uppercase text-[10px] tracking-widest">
+                  <Settings size={20} className="text-lime-400" /> Настройки
+                </button>
+                <button className="w-full flex items-center gap-4 p-5 rounded-[24px] bg-white/5 hover:bg-white/10 transition-colors font-black uppercase text-[10px] tracking-widest">
+                  <Share2 size={20} className="text-blue-400" /> Поделиться
+                </button>
+                <div className="h-px bg-white/5 my-4" />
+                <button 
+                  onClick={() => onSignOut?.()}
+                  className="w-full flex items-center gap-4 p-5 rounded-[24px] bg-red-500/10 hover:bg-red-500/20 transition-colors font-black uppercase text-[10px] tracking-widest text-red-400"
+                >
+                  <LogOut size={20} /> Выйти
+                </button>
+              </div>
+            </motion.div>
+          </>
         )}
-      </motion.div>
+      </AnimatePresence>
 
-      {/* Floating Scroll Indicator Pill */}
-      <motion.div 
-        style={{ opacity: initialTextOpacity }}
-        className="fixed bottom-10 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-black/40 px-6 py-3 border border-white/10 text-[10px] font-bold uppercase tracking-widest text-white/70 backdrop-blur-xl pointer-events-none"
-      >
-         Scroll Down to see full post
-         <ChevronDown size={14} className="animate-bounce" />
-      </motion.div>
-
-      {/* Profile Edit Toggle Button */}
-      <div className="fixed top-12 right-20 z-[110]">
-        {isEditing ? (
-          <button 
-            onClick={handleSave}
-            className="flex h-10 px-4 items-center justify-center gap-2 rounded-full bg-white text-black font-bold text-xs shadow-xl"
-          >
-            <Save size={16} /> Save
-          </button>
-        ) : (
-          <button 
-            onClick={() => setIsEditing(true)}
-            className="flex h-10 w-10 items-center justify-center rounded-full glass-surface text-white"
-          >
-            <PencilLine size={18} />
-          </button>
-        )}
-      </div>
+      <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
     </div>
   );
 }

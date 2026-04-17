@@ -238,6 +238,7 @@ export default function App() {
   const [editingMyProfile, setEditingMyProfile] = useState(false);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
+  const [showBottomNav, setShowBottomNav] = useState(true);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [myProfileDraft, setMyProfileDraft] = useState<EditableAuthProfile>({
     name: "",
@@ -1338,6 +1339,10 @@ export default function App() {
   ]);
 
   useEffect(() => {
+    setShowBottomNav(true);
+  }, [activeTab]);
+
+  useEffect(() => {
     if (myProfilePageOpen !== isProfileRoute) {
       setMyProfilePageOpen(isProfileRoute);
     }
@@ -1502,6 +1507,8 @@ export default function App() {
                       onSaveProfile={async () => {
                         await saveMyProfile();
                       }}
+                      onSignOut={signOutToRegistration}
+                      setShowBottomNav={setShowBottomNav}
                     />
                   </motion.div>
                 ) : activeTab === "discover" ? (
@@ -1695,15 +1702,27 @@ export default function App() {
       </div>
       
       {/* NEW BOTTOM NAV BAR */}
-      <BottomNavBar 
-        activeTab={activeTab} 
-        setActiveTab={(tab) => {
-          setActiveTab(tab);
-          if (tab !== 'chats') setActiveChatId(null);
-          if (tab === 'profile') openMyProfile();
-        }} 
-        unreadCount={totalUnread} 
-      />
+      <AnimatePresence>
+        {showBottomNav && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="fixed bottom-0 left-0 right-0 z-[100] flex justify-center pointer-events-none"
+          >
+            <BottomNavBar 
+              activeTab={activeTab} 
+              setActiveTab={(tab) => {
+                setActiveTab(tab);
+                if (tab !== 'chats') setActiveChatId(null);
+                if (tab === 'profile') openMyProfile();
+              }} 
+              unreadCount={totalUnread} 
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
